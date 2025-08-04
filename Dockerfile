@@ -13,4 +13,6 @@ CMD ["python", "bot.py"]
 
 EXPOSE 8080
 
-COPY materials/math ./materials/math
+COPY materials/ ./materials/
+
+RUN chmod -R 644 /app/materials
