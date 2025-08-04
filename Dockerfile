@@ -13,4 +13,4 @@ CMD ["python", "bot.py"]
 
 EXPOSE 8080
 
-COPY materials/ ./materials/
+COPY materials/math ./materials/math
