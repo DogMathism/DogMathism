@@ -16,3 +16,5 @@ EXPOSE 8080
 COPY materials/ ./materials/
 
 RUN chmod -R 644 /app/materials
+
+RUN ls -R /app/materials
