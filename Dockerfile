@@ -10,3 +10,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 ENV BOT_TOKEN=""
 
 CMD ["python", "bot.py"]
+
+EXPOSE 8080
