@@ -39,8 +39,8 @@ CHANNELS_BY_SUBJECT = {
 # Материалы: список кортежей (название файла, путь к файлу на сервере)
 materials_files = {
     "Математика": [
-        ("Свойства окружности.pdf", "materials/math_properties_circle.pdf"),
-        ("Гайд векторы.pdf", "materials/math_geometry_guide.pdf"),
+        ("Свойства окружности.pdf", "materials/math/Circle.pdf"),
+        ("Гайд векторы.pdf", "materials/math/Vectors.pdf"),
     ],
     "Физика": [
         ("Основы механики.pdf", "materials/physics_mechanics.pdf"),
