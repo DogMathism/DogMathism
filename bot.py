@@ -40,7 +40,7 @@ CHANNELS_BY_SUBJECT = {
 materials_files = {
     "Математика": [
         ("Свойства окружности.pdf", "materials/math_properties_circle.pdf"),
-        ("Геометрия гайд.pdf", "materials/math_geometry_guide.pdf"),
+        ("Гайд векторы.pdf", "materials/math_geometry_guide.pdf"),
     ],
     "Физика": [
         ("Основы механики.pdf", "materials/physics_mechanics.pdf"),
