@@ -121,27 +121,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return CHOOSING_SUBJECT
 
 @typing_action
-async def subject_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     subject = query.data
     user_id = query.from_user.id
 
     if user_id in users_data and "phone" in users_data[user_id]:
+        # Телефон есть → сразу материалы
         users_data[user_id]["subject"] = subject
         await query.message.reply_text(f"✅ Ты выбрал {subject}! 📚")
-        return await materials_menu(update, context)
-
-    users_data[user_id] = {
-        "username": query.from_user.username,
-        "subject": subject
-    }
-    reply_markup = ReplyKeyboardMarkup(
-        [[KeyboardButton("📱 Отправить контакт", request_contact=True)]],
-        one_time_keyboard=True,
-        resize_keyboard=True
-    )
-    await query.message.reply_text("Пожалуйста, отправь свой тг:", reply_markup=reply_markup)
+        await materials_menu(update, context)
+    else:
+        # Телефон отсутствует → просим прислать контакт
+        users_data[user_id] = {"username": query.from_user.username, "subject": subject}
+        reply_markup = ReplyKeyboardMarkup(
+            [[KeyboardButton("📱 Отправить контакт", request_contact=True)]],
+            one_time_keyboard=True,
+            resize_keyboard=True
+        )
+        await query.message.reply_text("Пожалуйста, отправь свой тг:", reply_markup=reply_markup)
     return ASK_PHONE
 
 @typing_action
