@@ -161,9 +161,12 @@ async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=ADMIN_ID, text=notify_text)
 
     await update.message.reply_text(
-        f"✅ Ты записан на {subject}! 📚 Напиши /materials, чтобы получить материалы.",
+        f"✅ Ты записан на предмет! 📚 Напиши /materials, чтобы получить материалы.",
         reply_markup=ReplyKeyboardMarkup([["/materials"]], resize_keyboard=True)
     )
+
+    # Не завершаем ConversationHandler, чтобы callback’ы работали
+    return None
 
 # --- Проверка подписки ---
 async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subject: str) -> bool:
@@ -273,7 +276,7 @@ def main():
     token = os.getenv("BOT_TOKEN")
     app = ApplicationBuilder().token(token).build()
 
-    # Только для первого запроса телефона
+    # ConversationHandler только для запроса телефона
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -286,9 +289,9 @@ def main():
     app.add_handler(CommandHandler("materials", materials_menu))
     app.add_handler(CommandHandler("admin", admin_panel))
 
-    # Обработчик выбора предмета вне ConversationHandler
+    # CallbackQueryHandler для выбора предметов
     app.add_handler(CallbackQueryHandler(choose_subject_callback, pattern="^(" + "|".join(SUBJECTS) + ")$"))
-    # Обработчик нажатия на материалы
+    # CallbackQueryHandler для материалов
     app.add_handler(CallbackQueryHandler(send_material_file, pattern=r"^material\|"))
 
     print("🤖 Бот запущен...")
