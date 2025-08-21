@@ -136,23 +136,20 @@ async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     notify_text = f"🆕 Новая заявка!\n👤 @{username}\n📞 {phone_number}"
     await context.bot.send_message(chat_id=ADMIN_ID, text=notify_text)
 
-    # Кнопка выбора предмета
-    reply_markup = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("📚 Выбрать предмет", callback_data="choose_subject")]]
-    )
-    await update.message.reply_text("Теперь выбери предмет для записи:", reply_markup=reply_markup)
-
+    # Показываем меню предметов сразу после контакта
+    await show_subjects(update, context)
     return ConversationHandler.END
 
-# --- Кнопка выбора предмета ---
+# --- Показать меню предметов ---
 @typing_action
-async def choose_subject_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+async def show_subjects(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton(subj, callback_data=subj)] for subj in SUBJECTS]
-    await query.message.reply_text("Выбери предмет:", reply_markup=InlineKeyboardMarkup(keyboard))
+    if update.callback_query:
+        await update.callback_query.message.reply_text("Выбери предмет:", reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await update.message.reply_text("Выбери предмет:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# --- Выбор конкретного предмета ---
+# --- Выбор предмета ---
 @typing_action
 async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -164,14 +161,27 @@ async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_
         users_data[user_id] = {"username": query.from_user.username}
     users_data[user_id]["subject"] = subject
 
-    await query.message.reply_text(f"✅ Ты выбрал {subject}!")
+    # Если телефона нет, просим его
+    if "phone" not in users_data[user_id]:
+        reply_markup = ReplyKeyboardMarkup(
+            [[KeyboardButton("📱 Отправить контакт", request_contact=True)]],
+            one_time_keyboard=True,
+            resize_keyboard=True
+        )
+        await query.message.reply_text("Пожалуйста, отправь свой тг:", reply_markup=reply_markup)
+        return ASK_PHONE
 
-    # Показываем материалы
+    await query.message.reply_text(f"✅ Ты выбрал {subject}!")
     await materials_menu(update, context)
 
-    # Кнопка для выбора другого предмета
+    # Кнопка выбора другого предмета
     keyboard = [[InlineKeyboardButton("🔄 Выбрать другой предмет", callback_data="choose_subject")]]
     await query.message.reply_text("Если хочешь другой предмет:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+# --- Кнопка для повторного выбора ---
+@typing_action
+async def choose_subject_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await show_subjects(update, context)
 
 # --- Проверка подписки ---
 async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subject: str) -> bool:
@@ -207,7 +217,7 @@ async def materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text(f"📚 Выбери материал по {subject}:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# --- Отправка материала с прогресс-баром ---
+# --- Отправка материала ---
 @typing_action
 async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
