@@ -124,7 +124,7 @@ async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     await query.answer()
     subject = query.data
-    user_id = query.from_user.id
+    user_id = update.effective_user.id
 
     if user_id in users_data and "phone" in users_data[user_id]:
         users_data[user_id]["subject"] = subject
@@ -144,7 +144,7 @@ async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_
 @typing_action
 async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.contact
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     phone_number = contact.phone_number
     users_data[user_id]["phone"] = phone_number
     username = users_data[user_id].get("username")
@@ -161,11 +161,11 @@ async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=ADMIN_ID, text=notify_text)
 
     await update.message.reply_text(
-        f"✅ Ты записан на предмет! 📚 Напиши /materials, чтобы получить материалы.",
+        f"✅ Ты записан на {subject}! 📚 Напиши /materials, чтобы получить материалы.",
         reply_markup=ReplyKeyboardMarkup([["/materials"]], resize_keyboard=True)
     )
 
-    # Не завершаем ConversationHandler, чтобы callback’ы работали
+    # Возвращаем None, чтобы callback’ы работали
     return None
 
 # --- Проверка подписки ---
@@ -176,8 +176,7 @@ async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subj
     try:
         member = await context.bot.get_chat_member(channel_username, update.effective_user.id)
         return member.status in ["member", "creator", "administrator"]
-    except Exception as e:
-        print(f"Ошибка проверки подписки: {e}")
+    except Exception:
         return False
 
 # --- Прогресс-бар и отправка материалов ---
@@ -286,13 +285,15 @@ def main():
     )
 
     app.add_handler(conv_handler)
-    app.add_handler(CommandHandler("materials", materials_menu))
-    app.add_handler(CommandHandler("admin", admin_panel))
 
-    # CallbackQueryHandler для выбора предметов
+    # CallbackQueryHandler для выбора предметов вне ConversationHandler
     app.add_handler(CallbackQueryHandler(choose_subject_callback, pattern="^(" + "|".join(SUBJECTS) + ")$"))
+
     # CallbackQueryHandler для материалов
     app.add_handler(CallbackQueryHandler(send_material_file, pattern=r"^material\|"))
+
+    app.add_handler(CommandHandler("materials", materials_menu))
+    app.add_handler(CommandHandler("admin", admin_panel))
 
     print("🤖 Бот запущен...")
     app.run_polling()
