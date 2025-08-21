@@ -165,8 +165,8 @@ async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=ReplyKeyboardMarkup([["/materials"]], resize_keyboard=True)
     )
 
-    # Возвращаем None, чтобы callback’ы работали
-    return None
+    # Завершаем ConversationHandler
+    return ConversationHandler.END
 
 # --- Проверка подписки ---
 async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subject: str) -> bool:
@@ -275,19 +275,18 @@ def main():
     token = os.getenv("BOT_TOKEN")
     app = ApplicationBuilder().token(token).build()
 
-    # ConversationHandler только для запроса телефона
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            ASK_PHONE: [MessageHandler(filters.CONTACT, phone_received)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
+    # ConversationHandler для запроса телефона
+conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("start", start)],
+    states={
+        ASK_PHONE: [MessageHandler(filters.CONTACT, phone_received)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
+app.add_handler(conv_handler)
 
-    app.add_handler(conv_handler)
-
-    # CallbackQueryHandler для выбора предметов вне ConversationHandler
-    app.add_handler(CallbackQueryHandler(choose_subject_callback, pattern="^(" + "|".join(SUBJECTS) + ")$"))
+# CallbackQueryHandler для выбора предметов вне ConversationHandler
+app.add_handler(CallbackQueryHandler(choose_subject_callback, pattern="^(" + "|".join(SUBJECTS) + ")$"))
 
     # CallbackQueryHandler для материалов
     app.add_handler(CallbackQueryHandler(send_material_file, pattern=r"^material\|"))
