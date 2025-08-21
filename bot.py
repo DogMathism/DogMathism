@@ -31,6 +31,7 @@ SUBJECTS = ["Математика", "Физика", "Химия", "Биолог�
 # --- Админ ---
 ADMIN_USERNAMES = ["dogmathism_admin"]
 ADMIN_ID = 7972251746
+ADMIN_USERNAME = "@dogwarts_admin"
 
 # --- Google Sheets ---
 GOOGLE_SHEET_NAME = "DogMathism"
@@ -80,7 +81,7 @@ def typing_action(func):
             await update.message.reply_chat_action("typing")
         elif update.callback_query:
             await update.callback_query.message.reply_chat_action("typing")
-        await asyncio.sleep(1)  # короткая пауза
+        await asyncio.sleep(0.7)
         return await func(update, context, *args, **kwargs)
     return wrapped
 
@@ -112,7 +113,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📖 Русский язык - @DogRussik\n"
         "🌿 Биология - @DogBio\n"
         "⚙️ Физика - @DogPhysic\n\n"
-        "💬 Вопросы и запись - @DogWarts_admin\n\n"
+        f"💬 Вопросы и запись - {ADMIN_USERNAME}\n\n"
         "Выбирай предмет и начни свой путь к успеху 👇",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -126,13 +127,11 @@ async def subject_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subject = query.data
     user_id = query.from_user.id
 
-    # если уже есть телефон → сразу материалы
     if user_id in users_data and "phone" in users_data[user_id]:
         users_data[user_id]["subject"] = subject
         await query.message.reply_text(f"✅ Ты выбрал {subject}! 📚")
         return await materials_menu(update, context)
 
-    # если телефона ещё нет → запрашиваем
     users_data[user_id] = {
         "username": query.from_user.username,
         "subject": subject
@@ -200,15 +199,20 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
     filename, filepath = files[idx]
 
     try:
-        # Живая имитация подготовки файла
-        for msg in ["Готовлю твой материал...", "Скоро пришлю 📄", "Почти готово…"]:
-            await query.message.reply_chat_action("typing")
-            await asyncio.sleep(1.2)
-            await query.message.reply_text(msg)
+        # Прогресс-бар в одном сообщении
+        progress_msg = await query.message.reply_text("Готовлю твой материал… [░░░░░░░░░░] 0%")
+        total_steps = 10
+        for step in range(1, total_steps + 1):
+            await asyncio.sleep(0.5)
+            bar = "█" * step + "░" * (total_steps - step)
+            percent = step * 10
+            await progress_msg.edit_text(f"Готовлю твой материал… [{bar}] {percent}%")
 
         # Отправка PDF
         with open(filepath, "rb") as f:
             await query.message.reply_document(document=InputFile(f), filename=filename)
+
+        await progress_msg.delete()
 
     except FileNotFoundError:
         await query.message.reply_text("Файл с материалом не найден на сервере.")
