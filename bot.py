@@ -233,7 +233,7 @@ async def materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for idx, (name, _) in enumerate(files)
     ]
     await update.message.reply_text(
-        f"📚 Выбери материал по {subject}:",
+        f"📚 Выбери материал:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
