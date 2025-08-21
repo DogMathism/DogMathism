@@ -118,7 +118,41 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# --- Выбор предмета ---
+# --- Получение телефона ---
+@typing_action
+async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    contact = update.message.contact
+    user_id = update.effective_user.id
+    phone_number = contact.phone_number
+
+    if user_id not in users_data:
+        users_data[user_id] = {"username": update.message.from_user.username}
+    users_data[user_id]["phone"] = phone_number
+
+    username = users_data[user_id]["username"]
+    await update.message.reply_text("✅ Телефон получен!")
+
+    # Отправка админу
+    notify_text = f"🆕 Новая заявка!\n👤 @{username}\n📞 {phone_number}"
+    await context.bot.send_message(chat_id=ADMIN_ID, text=notify_text)
+
+    # Кнопка выбора предмета
+    reply_markup = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("📚 Выбрать предмет", callback_data="choose_subject")]]
+    )
+    await update.message.reply_text("Теперь выбери предмет для записи:", reply_markup=reply_markup)
+
+    return ConversationHandler.END
+
+# --- Кнопка выбора предмета ---
+@typing_action
+async def choose_subject_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    keyboard = [[InlineKeyboardButton(subj, callback_data=subj)] for subj in SUBJECTS]
+    await query.message.reply_text("Выбери предмет:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+# --- Выбор конкретного предмета ---
 @typing_action
 async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -126,52 +160,18 @@ async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_
     subject = query.data
     user_id = update.effective_user.id
 
-    # Сохраняем выбранный предмет
     if user_id not in users_data:
         users_data[user_id] = {"username": query.from_user.username}
     users_data[user_id]["subject"] = subject
 
-    # Проверяем, есть ли телефон
-    if "phone" not in users_data[user_id]:
-        reply_markup = ReplyKeyboardMarkup(
-            [[KeyboardButton("📱 Отправить контакт", request_contact=True)]],
-            one_time_keyboard=True,
-            resize_keyboard=True
-        )
-        await query.message.reply_text("Пожалуйста, отправь свой тг:", reply_markup=reply_markup)
-        return ASK_PHONE
+    await query.message.reply_text(f"✅ Ты выбрал {subject}!")
 
-    # Если телефон есть — сразу показываем материалы
-    await query.message.reply_text(f"✅ Ты выбрал {subject}! 📚")
+    # Показываем материалы
     await materials_menu(update, context)
 
-
-# --- Получение телефона ---
-@typing_action
-async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    contact = update.message.contact
-    user_id = update.effective_user.id
-    phone_number = contact.phone_number
-    users_data[user_id]["phone"] = phone_number
-    username = users_data[user_id].get("username")
-    subject = users_data[user_id]["subject"]
-
-    write_to_sheet(username, phone_number, subject)
-
-    notify_text = (
-        f"🆕 Новая заявка!\n"
-        f"👤 @{username or '—'}\n"
-        f"📞 {phone_number}\n"
-        f"📘 Предмет: {subject}"
-    )
-    await context.bot.send_message(chat_id=ADMIN_ID, text=notify_text)
-
-    await update.message.reply_text(
-        f"✅ Ты записан на {subject}! 📚 Напиши /materials, чтобы получить материалы.",
-        reply_markup=ReplyKeyboardMarkup([["/materials"]], resize_keyboard=True)
-    )
-
-    return ConversationHandler.END  # Завершаем ConversationHandler
+    # Кнопка для выбора другого предмета
+    keyboard = [[InlineKeyboardButton("🔄 Выбрать другой предмет", callback_data="choose_subject")]]
+    await query.message.reply_text("Если хочешь другой предмет:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # --- Проверка подписки ---
 async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subject: str) -> bool:
@@ -184,7 +184,30 @@ async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subj
     except Exception:
         return False
 
-# --- Отправка материалов ---
+# --- Меню материалов ---
+@typing_action
+async def materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_info = users_data.get(user_id)
+    if not user_info:
+        await update.message.reply_text("😕 Ты ещё не записан. Напиши /start.")
+        return
+    subject = user_info.get("subject")
+    subscribed = await is_subscribed(update, context, subject)
+    if not subscribed:
+        await update.message.reply_text(f"❌ Подпишись на канал {CHANNELS_BY_SUBJECT[subject]} и попробуй снова.")
+        return
+    files = materials_files.get(subject)
+    if not files:
+        await update.message.reply_text("📂 Для твоего предмета пока нет материалов.")
+        return
+    keyboard = [
+        [InlineKeyboardButton(name, callback_data=f"material|{subject}|{idx}")]
+        for idx, (name, _) in enumerate(files)
+    ]
+    await update.message.reply_text(f"📚 Выбери материал по {subject}:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+# --- Отправка материала с прогресс-баром ---
 @typing_action
 async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -195,14 +218,11 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     _, subject, idx_str = data
     idx = int(idx_str)
-
     files = materials_files.get(subject)
     if not files or idx >= len(files):
         await query.message.reply_text("Материал не найден.")
         return
-
     filename, filepath = files[idx]
-
     try:
         progress_msg = await query.message.reply_text("Готовлю твой материал… [░░░░░░░░░░] 0%")
         total_steps = 10
@@ -211,46 +231,11 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
             bar = "█" * step + "░" * (total_steps - step)
             percent = step * 10
             await progress_msg.edit_text(f"Готовлю твой материал… [{bar}] {percent}%")
-
         with open(filepath, "rb") as f:
             await query.message.reply_document(document=InputFile(f), filename=filename)
-
         await progress_msg.delete()
-
     except FileNotFoundError:
         await query.message.reply_text("Файл с материалом не найден на сервере.")
-
-# --- Меню материалов ---
-@typing_action
-async def materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_info = users_data.get(user_id)
-    if not user_info:
-        await update.message.reply_text("😕 Ты ещё не записан. Напиши /start.")
-        return
-
-    subject = user_info.get("subject")
-
-    subscribed = await is_subscribed(update, context, subject)
-    if not subscribed:
-        await update.message.reply_text(
-            f"❌ Для получения материалов подпишись на канал {CHANNELS_BY_SUBJECT.get(subject, 'канал')} и попробуй снова."
-        )
-        return
-
-    files = materials_files.get(subject)
-    if not files:
-        await update.message.reply_text("📂 Для твоего предмета пока нет материалов.")
-        return
-
-    keyboard = [
-        [InlineKeyboardButton(name, callback_data=f"material|{subject}|{idx}")]
-        for idx, (name, _) in enumerate(files)
-    ]
-    await update.message.reply_text(
-        f"📚 Выбери материал по {subject}:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
 
 # --- Админка ---
 @typing_action
@@ -288,7 +273,8 @@ def main():
     )
     app.add_handler(conv_handler)
 
-    # CallbackQueryHandler для выбора предметов вне ConversationHandler
+    # CallbackQueryHandler для выбора предмета и кнопки повторного выбора
+    app.add_handler(CallbackQueryHandler(choose_subject_menu, pattern="^choose_subject$"))
     app.add_handler(CallbackQueryHandler(choose_subject_callback, pattern="^(" + "|".join(SUBJECTS) + ")$"))
 
     # CallbackQueryHandler для материалов
