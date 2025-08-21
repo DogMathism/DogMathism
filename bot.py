@@ -136,9 +136,10 @@ async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     notify_text = f"🆕 Новая заявка!\n👤 @{username}\n📞 {phone_number}"
     await context.bot.send_message(chat_id=ADMIN_ID, text=notify_text)
 
-    # Показываем меню предметов сразу после контакта
+    # Показать меню предметов сразу после контакта
     await show_subjects(update, context)
-    return ConversationHandler.END
+
+    return ConversationHandler.END  # Завершаем ConversationHandler, но кнопки работают
 
 # --- Показать меню предметов ---
 @typing_action
@@ -299,3 +300,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
