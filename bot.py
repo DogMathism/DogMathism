@@ -72,7 +72,7 @@ materials_files = {
 # --- Пользователи ---
 users_data = {}
 
-# --- Декоратор для эффекта "печатает" ---
+# --- Декоратор "печатает" ---
 def typing_action(func):
     @wraps(func)
     async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
@@ -118,7 +118,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# --- Обработка выбора предмета ---
+# --- Выбор предмета ---
 @typing_action
 async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -165,8 +165,7 @@ async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=ReplyKeyboardMarkup([["/materials"]], resize_keyboard=True)
     )
 
-    # Завершаем ConversationHandler
-    return ConversationHandler.END
+    return ConversationHandler.END  # Завершаем ConversationHandler
 
 # --- Проверка подписки ---
 async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subject: str) -> bool:
@@ -179,7 +178,7 @@ async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subj
     except Exception:
         return False
 
-# --- Прогресс-бар и отправка материалов ---
+# --- Отправка материалов ---
 @typing_action
 async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -276,21 +275,20 @@ def main():
     app = ApplicationBuilder().token(token).build()
 
     # ConversationHandler для запроса телефона
-conv_handler = ConversationHandler(
-    entry_points=[CommandHandler("start", start)],
-    states={
-        ASK_PHONE: [MessageHandler(filters.CONTACT, phone_received)],
-    },
-    fallbacks=[CommandHandler("cancel", cancel)],
-)
-app.add_handler(conv_handler)
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={ASK_PHONE: [MessageHandler(filters.CONTACT, phone_received)]},
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    app.add_handler(conv_handler)
 
-# CallbackQueryHandler для выбора предметов вне ConversationHandler
-app.add_handler(CallbackQueryHandler(choose_subject_callback, pattern="^(" + "|".join(SUBJECTS) + ")$"))
+    # CallbackQueryHandler для выбора предметов вне ConversationHandler
+    app.add_handler(CallbackQueryHandler(choose_subject_callback, pattern="^(" + "|".join(SUBJECTS) + ")$"))
 
     # CallbackQueryHandler для материалов
     app.add_handler(CallbackQueryHandler(send_material_file, pattern=r"^material\|"))
 
+    # Команды
     app.add_handler(CommandHandler("materials", materials_menu))
     app.add_handler(CommandHandler("admin", admin_panel))
 
