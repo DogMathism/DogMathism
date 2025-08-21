@@ -1,4 +1,5 @@
 import os
+import re
 from keep_alive import keep_alive
 from telegram import (
     Update,
@@ -21,18 +22,22 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 CHOOSING_SUBJECT, ASK_PHONE, MATERIALS_MENU = range(3)
-SUBJECTS = ["Математика", "Физика", "Химия", "Биология", "Русский"]
-ADMIN_USERNAMES = ["dogmathism_admin"]
+
+# 👇 Обновлённые предметы
+SUBJECTS = ["Математика", "Физика", "Химия", "Биология", "Русский", "Биохимия"]
+
+ADMIN_USERNAMES = ["dogwarts_admin"]
 ADMIN_ID = 7972251746
 GOOGLE_SHEET_NAME = "DogMathism"
 CREDENTIALS_FILE = "credentials.json"
 
 CHANNELS_BY_SUBJECT = {
-    "Математика": "@dogmathic",
-    "Физика": "@dogphysic",
-    "Химия": "@dogchemik",
-    "Биология": "@dogbio",
-    "Русский": "@dogrussik",
+    "Математика": "@DogMathic",
+    "Физика": "@DogPhysic",
+    "Химия": "@DogChemik",
+    "Биология": "@DogBio",
+    "Русский": "@DogRussik",
+    "Биохимия": "@DogBioChemik",
 }
 
 materials_files = {
@@ -51,6 +56,9 @@ materials_files = {
     ],
     "Русский": [
         ("Правила орфографии.pdf", "materials/rus_orthography_rules.pdf"),
+    ],
+    "Биохимия": [
+        ("Основы биохимии.pdf", "materials/biochem_fundamentals.pdf"),
     ],
 }
 
@@ -73,21 +81,21 @@ def read_all_entries():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton(subject, callback_data=subject)] for subject in SUBJECTS]
     await update.message.reply_text(
-        "👋 Привет!\n\n"
-        "Ты в DogMathism — это не просто школа, а семья, которая воспитывает высокобалльников 💯\n\n"
-        "Мы — команда онлайн-преподавателей, которые умеют не только решать задачи,\n"
-        "но и превращать учёбу в понятный, живой процесс 📚\n\n"
-        "Телеграм-каналы преподавателей:\n"
-        "• 🧠 Математика — @dogmathic\n"
-        "• 🔬 Химия — @dogchemik\n"
-        "• 📖 Русский — @dogrussik\n"
-        "• 🌿 Биология — @dogbio\n"
-        "• ⚙️ Физика — @dogphysic\n\n"
-        "💬 По всем вопросам — @DogMathism_admin\n\n"
-        "На какой предмет хочешь записаться? 👇",
+        "👋 Добро пожаловать в <b>DogWarts</b> — <b>школу</b>, где знания сильнее <b>магии</b>\n\n"
+        "📚 Предметы:\n\n"
+        "🧠 Математика — @DogMathic\n"
+        "🧪 Химия — @DogChemik\n"
+        "⚛️ Биохимия — @DogBioChemik\n"
+        "📖 Русский язык — @DogRussik\n"
+        "🌿 Биология — @DogBio\n"
+        "⚙️ Физика — @DogPhysic\n\n"
+        "💬 Вопросы и запись — @DogWarts_admin\n\n"
+        "Выбирай предмет и начни свой путь к успеху 👇",
+        parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     return CHOOSING_SUBJECT
+
 
 async def subject_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -103,13 +111,22 @@ async def subject_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         one_time_keyboard=True,
         resize_keyboard=True
     )
-    await query.message.reply_text("Пожалуйста, отправь свою телегу:", reply_markup=reply_markup)
+    await query.message.reply_text("Пожалуйста, отправь свой номер телефона:", reply_markup=reply_markup)
     return ASK_PHONE
 
 async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    contact = update.message.contact
     user_id = update.message.from_user.id
-    phone_number = contact.phone_number
+
+    if update.message.contact:
+        phone_number = update.message.contact.phone_number
+    else:
+        phone_number = update.message.text.strip()
+
+    # 🔍 Проверка номера: должен начинаться с + и содержать 10-15 цифр
+    if not re.match(r"^\+?\d{10,15}$", phone_number):
+        await update.message.reply_text("❌ Пожалуйста, введи корректный номер телефона (например: +79991234567)")
+        return ASK_PHONE
+
     users_data[user_id]["phone"] = phone_number
     username = users_data[user_id].get("username")
     subject = users_data[user_id]["subject"]
@@ -158,7 +175,6 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
     filename, filepath = files[idx]
 
     try:
-        # 🔍 Отладка: выводим путь и содержимое папки
         print(f"📦 Попытка открыть файл: {filepath}")
         print(f"📂 Содержимое папки: {os.listdir(os.path.dirname(filepath))}")
         with open(filepath, "rb") as f:
@@ -224,7 +240,7 @@ def main():
         entry_points=[CommandHandler("start", start)],
         states={
             CHOOSING_SUBJECT: [CallbackQueryHandler(subject_chosen)],
-            ASK_PHONE: [MessageHandler(filters.CONTACT, phone_received)],
+            ASK_PHONE: [MessageHandler(filters.CONTACT | filters.TEXT, phone_received)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
@@ -232,8 +248,6 @@ def main():
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("materials", materials_menu))
     app.add_handler(CommandHandler("admin", admin_panel))
-
-    # 👇 Добавлен обработчик нажатий по материалам ВНЕ ConversationHandler
     app.add_handler(CallbackQueryHandler(send_material_file, pattern=r"^material\|"))
 
     print("🤖 Бот запущен...")
