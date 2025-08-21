@@ -15,15 +15,11 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
-    ConversationHandler,
     ContextTypes,
     filters
 )
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-
-# --- Состояния ---
-ASK_PHONE = 0
 
 # --- Предметы ---
 SUBJECTS = ["Математика", "Физика", "Химия", "Биология", "Русский", "Биохимия"]
@@ -72,15 +68,15 @@ materials_files = {
 # --- Пользователи ---
 users_data = {}
 
-# --- Декоратор для эффекта "печатает" ---
+# --- typing эффект ---
 def typing_action(func):
     @wraps(func)
     async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         if update.message:
-            await update.message.reply_chat_action("typing")
+            await update.message.chat.send_action("typing")
         elif update.callback_query:
-            await update.callback_query.message.reply_chat_action("typing")
-        await asyncio.sleep(0.7)
+            await update.callback_query.message.chat.send_action("typing")
+        await asyncio.sleep(0.5)
         return await func(update, context, *args, **kwargs)
     return wrapped
 
@@ -126,53 +122,47 @@ async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_
     subject = query.data
     user_id = update.effective_user.id
 
-    if user_id in users_data and "phone" in users_data[user_id]:
-        users_data[user_id]["subject"] = subject
-        await query.message.reply_text(f"✅ Ты выбрал {subject}! 📚")
-        await materials_menu(update, context)
-    else:
-        users_data[user_id] = {"username": query.from_user.username, "subject": subject}
-        reply_markup = ReplyKeyboardMarkup(
-            [[KeyboardButton("📱 Отправить контакт", request_contact=True)]],
-            one_time_keyboard=True,
-            resize_keyboard=True
-        )
-        await query.message.reply_text("Пожалуйста, отправь свой тг:", reply_markup=reply_markup)
-        return ASK_PHONE
+    users_data[user_id] = {"username": query.from_user.username, "subject": subject}
+
+    reply_markup = ReplyKeyboardMarkup(
+        [[KeyboardButton("📱 Отправить контакт", request_contact=True)]],
+        resize_keyboard=True
+    )
+    await query.message.reply_text("📲 Пожалуйста, отправь свой контакт:", reply_markup=reply_markup)
 
 # --- Получение телефона ---
 @typing_action
 async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.contact:
         return
+
+    contact = update.message.contact
     user_id = update.effective_user.id
-    phone_number = update.message.contact.phone_number
-    username = users_data[user_id].get("username")
-    subject = users_data[user_id].get("subject")
+    phone_number = contact.phone_number
+    username = update.effective_user.username
+    subject = users_data.get(user_id, {}).get("subject")
 
-    # сохраняем телефон в users_data (но пишем в таблицу всегда!)
-    users_data[user_id]["phone"] = phone_number
+    if not subject:
+        await update.message.reply_text("Сначала выбери предмет через /start.")
+        return
 
-    if subject:
-        # всегда пишем заявку в таблицу, даже если номер был до этого
-        write_to_sheet(username, phone_number, subject)
-        notify_text = (
-            f"🆕 Новая заявка!\n"
-            f"👤 @{username or '—'}\n"
-            f"📞 {phone_number}\n"
-            f"📘 Предмет: {subject}"
-        )
-        await context.bot.send_message(chat_id=ADMIN_ID, text=notify_text)
+    # Записываем
+    users_data[user_id].update({"phone": phone_number})
+    write_to_sheet(username, phone_number, subject)
 
-        await update.message.reply_text(
-            f"✅ Ты записан на {subject}! 📚\n\n"
-            "Теперь ты можешь получить материалы, нажав на кнопку ниже 👇",
-            reply_markup=ReplyKeyboardMarkup([["📚 Материалы"]], resize_keyboard=True)
-        )
-    else:
-        await update.message.reply_text("Телефон сохранён! Теперь выбери предмет: /start")
+    notify_text = (
+        f"🆕 Новая заявка!\n"
+        f"👤 @{username or '—'}\n"
+        f"📞 {phone_number}\n"
+        f"📘 Предмет: {subject}"
+    )
+    await context.bot.send_message(chat_id=ADMIN_ID, text=notify_text)
 
-    return ConversationHandler.END
+    await update.message.reply_text(
+        f"✅ Ты записан на {subject}!\n\n"
+        "Чтобы получить материалы — нажми 📚 Материалы 👇",
+        reply_markup=ReplyKeyboardMarkup([["📚 Материалы"]], resize_keyboard=True)
+    )
 
 # --- Проверка подписки ---
 async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subject: str) -> bool:
@@ -190,11 +180,7 @@ async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subj
 async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data = query.data.split("|")
-    if len(data) != 3:
-        await query.message.reply_text("Ошибка обработки запроса.")
-        return
-    _, subject, idx_str = data
+    _, subject, idx_str = query.data.split("|")
     idx = int(idx_str)
 
     files = materials_files.get(subject)
@@ -208,7 +194,7 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
         progress_msg = await query.message.reply_text("Готовлю твой материал… [░░░░░░░░░░] 0%")
         total_steps = 10
         for step in range(1, total_steps + 1):
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.4)
             bar = "█" * step + "░" * (total_steps - step)
             percent = step * 10
             await progress_msg.edit_text(f"Готовлю твой материал… [{bar}] {percent}%")
@@ -217,9 +203,8 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.message.reply_document(document=InputFile(f), filename=filename)
 
         await progress_msg.delete()
-
     except FileNotFoundError:
-        await query.message.reply_text("Файл с материалом не найден на сервере.")
+        await query.message.reply_text("Файл не найден.")
 
 # --- Меню материалов ---
 @typing_action
@@ -231,11 +216,10 @@ async def materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     subject = user_info.get("subject")
-
     subscribed = await is_subscribed(update, context, subject)
     if not subscribed:
         await update.message.reply_text(
-            f"❌ Для получения материалов подпишись на канал {CHANNELS_BY_SUBJECT.get(subject, 'канал')} и попробуй снова."
+            f"❌ Подпишись на канал {CHANNELS_BY_SUBJECT.get(subject, 'канал')} и попробуй снова."
         )
         return
 
@@ -269,32 +253,28 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"👤 @{row[0]} 📞 {row[1]} 📘 {row[2]}\n"
     await update.message.reply_text(text)
 
-# --- Отмена ---
-@typing_action
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Отменено.")
-    return ConversationHandler.END
-
 # --- Main ---
 def main():
     keep_alive()
     token = os.getenv("BOT_TOKEN")
     app = ApplicationBuilder().token(token).build()
 
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={ASK_PHONE: [MessageHandler(filters.CONTACT, phone_received)]},
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
-    app.add_handler(conv_handler)
-
-    app.add_handler(CallbackQueryHandler(choose_subject_callback, pattern="^(" + "|".join(SUBJECTS) + ")$"))
-    app.add_handler(CallbackQueryHandler(send_material_file, pattern=r"^material\|"))
-
+    # команды
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("materials", materials_menu))
+    app.add_handler(CommandHandler("admin", admin_panel))
+
+    # выбор предмета
+    app.add_handler(CallbackQueryHandler(choose_subject_callback, pattern="^(" + "|".join(SUBJECTS) + ")$"))
+
+    # получение контакта
+    app.add_handler(MessageHandler(filters.CONTACT, phone_received))
+
+    # кнопка 📚 Материалы
     app.add_handler(MessageHandler(filters.Regex("^📚 Материалы$"), materials_menu))
 
-    app.add_handler(CommandHandler("admin", admin_panel))
+    # загрузка материалов
+    app.add_handler(CallbackQueryHandler(send_material_file, pattern=r"^material\|"))
 
     print("🤖 Бот запущен...")
     app.run_polling()
