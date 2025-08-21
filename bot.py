@@ -1,5 +1,6 @@
 import os
 import asyncio
+from functools import wraps
 from keep_alive import keep_alive
 from telegram import (
     Update,
@@ -71,6 +72,18 @@ materials_files = {
 # --- Пользователи ---
 users_data = {}
 
+# --- Декоратор для эффекта "печатает" ---
+def typing_action(func):
+    @wraps(func)
+    async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        if update.message:
+            await update.message.reply_chat_action("typing")
+        elif update.callback_query:
+            await update.callback_query.message.reply_chat_action("typing")
+        await asyncio.sleep(1)  # короткая пауза
+        return await func(update, context, *args, **kwargs)
+    return wrapped
+
 # --- Работа с таблицей ---
 def write_to_sheet(username, phone, subject):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -87,6 +100,7 @@ def read_all_entries():
     return sheet.get_all_values()[1:]
 
 # --- Команды ---
+@typing_action
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton(subject, callback_data=subject)] for subject in SUBJECTS]
     await update.message.reply_text(
@@ -105,19 +119,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return CHOOSING_SUBJECT
 
+@typing_action
 async def subject_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     subject = query.data
     user_id = query.from_user.id
 
-    # если уже есть телефон → сразу даём материалы
+    # если уже есть телефон → сразу материалы
     if user_id in users_data and "phone" in users_data[user_id]:
         users_data[user_id]["subject"] = subject
         await query.message.reply_text(f"✅ Ты выбрал {subject}! 📚")
         return await materials_menu(update, context)
 
-    # если телефона ещё нет → стандартный сценарий
+    # если телефона ещё нет → запрашиваем
     users_data[user_id] = {
         "username": query.from_user.username,
         "subject": subject
@@ -130,6 +145,7 @@ async def subject_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text("Пожалуйста, отправь свой тг:", reply_markup=reply_markup)
     return ASK_PHONE
 
+@typing_action
 async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.contact
     user_id = update.message.from_user.id
@@ -165,6 +181,7 @@ async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subj
         print(f"Ошибка проверки подписки: {e}")
         return False
 
+@typing_action
 async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -183,15 +200,20 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
     filename, filepath = files[idx]
 
     try:
-        await query.message.reply_chat_action("typing")  
-        await asyncio.sleep(1.5)  
-        await query.message.reply_text("Вот твой материал 👇")
+        # Живая имитация подготовки файла
+        for msg in ["Готовлю твой материал...", "Скоро пришлю 📄", "Почти готово…"]:
+            await query.message.reply_chat_action("typing")
+            await asyncio.sleep(1.2)
+            await query.message.reply_text(msg)
 
+        # Отправка PDF
         with open(filepath, "rb") as f:
             await query.message.reply_document(document=InputFile(f), filename=filename)
+
     except FileNotFoundError:
         await query.message.reply_text("Файл с материалом не найден на сервере.")
 
+@typing_action
 async def materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_info = users_data.get(user_id)
@@ -217,7 +239,6 @@ async def materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(name, callback_data=f"material|{subject}|{idx}")]
         for idx, (name, _) in enumerate(files)
     ]
-    keyboard.append([InlineKeyboardButton("🔙 Выбрать другой предмет", callback_data="choose_subject")])
 
     await update.message.reply_text(
         f"📚 Выбери материал по {subject}:",
@@ -225,11 +246,7 @@ async def materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return MATERIALS_MENU
 
-async def back_to_subjects(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    return await start(update, context)
-
+@typing_action
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username
     if username not in ADMIN_USERNAMES:
@@ -244,6 +261,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"👤 @{row[0]} 📞 {row[1]} 📘 {row[2]}\n"
     await update.message.reply_text(text)
 
+@typing_action
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Отменено.")
     return ConversationHandler.END
@@ -265,9 +283,7 @@ def main():
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("materials", materials_menu))
     app.add_handler(CommandHandler("admin", admin_panel))
-
     app.add_handler(CallbackQueryHandler(send_material_file, pattern=r"^material\|"))
-    app.add_handler(CallbackQueryHandler(back_to_subjects, pattern="^choose_subject$"))
 
     print("🤖 Бот запущен...")
     app.run_polling()
