@@ -126,12 +126,13 @@ async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_
     subject = query.data
     user_id = update.effective_user.id
 
-    if user_id in users_data and "phone" in users_data[user_id]:
-        users_data[user_id]["subject"] = subject
-        await query.message.reply_text(f"✅ Ты выбрал {subject}! 📚")
-        await materials_menu(update, context)
-    else:
-        users_data[user_id] = {"username": query.from_user.username, "subject": subject}
+    # Сохраняем выбранный предмет
+    if user_id not in users_data:
+        users_data[user_id] = {"username": query.from_user.username}
+    users_data[user_id]["subject"] = subject
+
+    # Проверяем, есть ли телефон
+    if "phone" not in users_data[user_id]:
         reply_markup = ReplyKeyboardMarkup(
             [[KeyboardButton("📱 Отправить контакт", request_contact=True)]],
             one_time_keyboard=True,
@@ -139,6 +140,11 @@ async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_
         )
         await query.message.reply_text("Пожалуйста, отправь свой тг:", reply_markup=reply_markup)
         return ASK_PHONE
+
+    # Если телефон есть — сразу показываем материалы
+    await query.message.reply_text(f"✅ Ты выбрал {subject}! 📚")
+    await materials_menu(update, context)
+
 
 # --- Получение телефона ---
 @typing_action
