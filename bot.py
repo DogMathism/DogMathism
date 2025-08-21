@@ -128,7 +128,7 @@ async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_
         [[KeyboardButton("📱 Отправить контакт", request_contact=True)]],
         resize_keyboard=True
     )
-    await query.message.reply_text("📲 Пожалуйста, отправь свой контакт:", reply_markup=reply_markup)
+    await query.message.reply_text("📲 Пожалуйста, отправь свой тг:", reply_markup=reply_markup)
 
 # --- Получение телефона ---
 @typing_action
@@ -159,8 +159,8 @@ async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=ADMIN_ID, text=notify_text)
 
     await update.message.reply_text(
-        f"✅ Ты записан на {subject}!\n\n"
-        "Чтобы получить материалы — нажми 📚 Материалы 👇",
+        f"✅ Ты записан на предмет!\n\n"
+        "Теперь ты можешь получить материалы, нажав на кнопку ниже 👇",
         reply_markup=ReplyKeyboardMarkup([["📚 Материалы"]], resize_keyboard=True)
     )
 
