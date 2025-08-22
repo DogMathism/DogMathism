@@ -21,8 +21,6 @@ from telegram.ext import (
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# --- Состояния (больше не нужны) ---
-
 # --- Предметы с падежами ---
 SUBJECTS = {
     "Математика": {"nominative": "Математика", "accusative": "математику", "prepositional": "математике"},
@@ -65,7 +63,7 @@ materials_files = {
 # --- Пользователи ---
 users_data = {}
 
-# --- Декоратор для эффекта "печатает" ---
+# --- Декоратор "печатает" ---
 def typing_action(func):
     @wraps(func)
     async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
@@ -111,7 +109,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# --- Обработка выбора предмета ---
+# --- Выбор предмета ---
 @typing_action
 async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -123,11 +121,9 @@ async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_
     users_data[user_id]["subject"] = subject
 
     if "phone" in users_data[user_id]:
-        # Контакт уже есть → показываем материалы
         await query.message.reply_text(f"✅ ты выбрал {SUBJECTS[subject]['accusative']} 📚")
         await materials_menu(update, context)
     else:
-        # Контакт отсутствует → запрашиваем
         reply_markup = ReplyKeyboardMarkup(
             [[KeyboardButton("📱 Отправить контакт", request_contact=True)]],
             one_time_keyboard=True,
@@ -135,7 +131,7 @@ async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_
         )
         await query.message.reply_text("Пожалуйста, отправь свой контакт:", reply_markup=reply_markup)
 
-# --- Получение телефона ---
+# --- Получение контакта ---
 @typing_action
 async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.contact
@@ -143,6 +139,7 @@ async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in users_data or "subject" not in users_data[user_id]:
         await update.message.reply_text("❌ Сначала выбери предмет командой /start.")
         return
+
     phone_number = contact.phone_number
     users_data[user_id]["phone"] = phone_number
     username = users_data[user_id].get("username")
@@ -160,9 +157,12 @@ async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"✅ ты записан на {SUBJECTS[subject]['accusative']} 📚\n"
-        f"Сейчас покажу материалы 👇",
+        "Сейчас покажу доступные материалы 👇",
         reply_markup=ReplyKeyboardMarkup([["📂 материалы"]], resize_keyboard=True)
     )
+
+    # Автоматически показываем материалы
+    await materials_menu(update, context)
 
 # --- Проверка подписки ---
 async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subject: str) -> bool:
@@ -213,7 +213,7 @@ async def materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# --- Отправка материалов ---
+# --- Отправка материалов с прогресс-баром в одном сообщении ---
 @typing_action
 async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -244,12 +244,15 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await progress_msg.edit_text(f"Готовлю твой материал… [{bar}] {percent}%")
             except Exception:
                 pass
+
         with open(filepath, "rb") as f:
             await query.message.reply_document(document=InputFile(f), filename=filename)
+
         try:
             await progress_msg.delete()
         except Exception:
             pass
+
     except FileNotFoundError:
         await query.message.reply_text("❌ Файл не найден на сервере.")
     except Exception as e:
@@ -304,4 +307,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    
+
 
