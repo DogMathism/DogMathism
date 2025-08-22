@@ -8,13 +8,10 @@ from telegram import (
 )
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
-    MessageHandler, ContextTypes, filters, ConversationHandler
+    MessageHandler, ContextTypes, filters
 )
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-
-# --- Состояния ---
-ROLE, STUDENT_ACTION, SUBJECT_CHOICE, CLASS_CHOICE, EXAM_CHOICE, PHONE_INPUT = range(6)
 
 # --- Предметы ---
 SUBJECTS = {
@@ -89,6 +86,8 @@ def write_to_sheet(data):
 # --- /start ---
 @typing_action
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    users_data[user_id] = {"step": "role"}
     keyboard = [
         [InlineKeyboardButton("Ученик", callback_data="role_student")],
         [InlineKeyboardButton("Родитель", callback_data="role_parent")],
@@ -101,7 +100,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-    return ROLE
 
 # --- Выбор роли ---
 @typing_action
@@ -109,23 +107,23 @@ async def choose_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = update.effective_user.id
-    users_data[user_id] = {"role": query.data.split("_")[1]}  # student, parent, university, teacher
-    role = users_data[user_id]["role"]
+    role = query.data.split("_")[1]
+    users_data[user_id]["role"] = role
 
     if role in ["student", "parent"]:
+        users_data[user_id]["step"] = "action"
         keyboard = [
             [InlineKeyboardButton("Запись на занятия", callback_data="action_register")],
             [InlineKeyboardButton("Получить полезные материалы", callback_data="action_materials")]
         ]
         await query.message.reply_text("Выберите действие:", reply_markup=InlineKeyboardMarkup(keyboard))
-        return STUDENT_ACTION
     elif role == "university":
         users_data[user_id]["subject"] = "Биохимия"
         await send_class_menu(update, context)
-        return CLASS_CHOICE
+        users_data[user_id]["step"] = "class"
     elif role == "teacher":
         await query.message.reply_text(f"Если Вы хотите работать у нас, свяжитесь с админом {ADMIN_USERNAME}")
-        return ConversationHandler.END
+        users_data[user_id]["step"] = None
 
 # --- Действие ученика/родителя ---
 @typing_action
@@ -133,20 +131,19 @@ async def student_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = update.effective_user.id
-    action = query.data.split("_")[1]  # register / materials
+    action = query.data.split("_")[1]
     users_data[user_id]["action"] = action
 
     if action == "register":
-        # Список предметов (кроме биохимии)
         keyboard = [
             [InlineKeyboardButton(subj, callback_data=f"subject|{subj}")]
             for subj in SUBJECTS if subj != "Биохимия"
         ]
+        users_data[user_id]["step"] = "subject"
         await query.message.reply_text("Выберите предмет:", reply_markup=InlineKeyboardMarkup(keyboard))
-        return SUBJECT_CHOICE
     elif action == "materials":
+        users_data[user_id]["step"] = "class"
         await send_class_menu(update, context)
-        return CLASS_CHOICE
 
 # --- Выбор предмета ---
 @typing_action
@@ -156,10 +153,10 @@ async def choose_subject(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     subject = query.data.split("|")[1]
     users_data[user_id]["subject"] = subject
+    users_data[user_id]["step"] = "class"
     await send_class_menu(update, context)
-    return CLASS_CHOICE
 
-# --- Кнопки класса ---
+# --- Класс ---
 async def send_class_menu(update, context):
     keyboard = [
         [InlineKeyboardButton("5", callback_data="class|5"),
@@ -181,13 +178,13 @@ async def class_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = update.effective_user.id
-    users_data[user_id]["class"] = query.data.split("|")[1]
-    # Никнейм автоматически
+    class_name = query.data.split("|")[1]
+    users_data[user_id]["class"] = class_name
     users_data[user_id]["nickname"] = update.effective_user.username or "—"
 
     role = users_data[user_id]["role"]
-    if role in ["student", "parent"]:
-        # Отправка контакта
+    if role in ["student", "parent"] and users_data[user_id].get("action") == "register":
+        users_data[user_id]["step"] = "phone"
         await query.message.reply_text(
             "Отправьте ваш контакт:",
             reply_markup=ReplyKeyboardMarkup(
@@ -195,23 +192,23 @@ async def class_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 resize_keyboard=True, one_time_keyboard=True
             )
         )
-        return PHONE_INPUT
     else:
+        # сразу показать материалы
         write_to_sheet(users_data[user_id])
         await send_materials_menu(update, context, user_id)
-        return_to_main_menu(update, context)
-        return ConversationHandler.END
+        users_data[user_id]["step"] = "done"
+        await return_to_main_menu(update, context)
 
-# --- Ввод телефона ---
+# --- Телефон ---
 @typing_action
 async def phone_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    contact = update.message.contact
     user_id = update.effective_user.id
+    contact = update.message.contact
     users_data[user_id]["phone"] = contact.phone_number
     write_to_sheet(users_data[user_id])
     await send_materials_menu(update, context, user_id)
-    return_to_main_menu(update, context)
-    return ConversationHandler.END
+    users_data[user_id]["step"] = "done"
+    await return_to_main_menu(update, context)
 
 # --- Проверка подписки ---
 async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subject: str) -> bool:
@@ -230,26 +227,19 @@ async def send_materials_menu(update, context, user_id):
         return
     subscribed = await is_subscribed(update, context, subject)
     if not subscribed:
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=f"❌ Подпишитесь на канал {CHANNELS_BY_SUBJECT.get(subject, 'канал')} и попробуйте снова."
-        )
+        await context.bot.send_message(chat_id=user_id,
+            text=f"❌ Подпишитесь на канал {CHANNELS_BY_SUBJECT.get(subject, 'канал')} и попробуйте снова.")
         return
-
     files = materials_files.get(subject)
     if not files:
         await context.bot.send_message(chat_id=user_id, text="📂 Для этого предмета пока нет материалов.")
         return
-
-    keyboard = [[InlineKeyboardButton(name, callback_data=f"material|{subject}|{idx}")]
-                for idx, (name, _) in enumerate(files)]
-    await context.bot.send_message(
-        chat_id=user_id,
+    keyboard = [[InlineKeyboardButton(name, callback_data=f"material|{subject}|{idx}")] for idx, (name, _) in enumerate(files)]
+    await context.bot.send_message(chat_id=user_id,
         text=f"📚 Выберите материал по {subject}:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+        reply_markup=InlineKeyboardMarkup(keyboard))
 
-# --- Отправка материала с прогресс-баром ---
+# --- Прогресс-бар и отправка файла ---
 @typing_action
 async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -260,12 +250,10 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except:
         await query.message.reply_text("❌ Ошибка обработки запроса.")
         return
-
     files = materials_files.get(subject)
     if not files or idx >= len(files):
         await query.message.reply_text("❌ Материал не найден.")
         return
-
     filename, filepath = files[idx]
     try:
         progress_msg = await query.message.reply_text("Готовлю твой материал… [░░░░░░░░░░] 0%")
@@ -284,8 +272,10 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
         print(f"Ошибка send_material_file: {e}")
         await query.message.reply_text("❌ Ошибка при подготовке материала.")
 
-# --- Возврат в главное меню ---
+# --- Главное меню для повторного выбора ---
 async def return_to_main_menu(update, context):
+    user_id = update.effective_user.id
+    users_data[user_id]["step"] = "role"
     keyboard = [
         [InlineKeyboardButton("Главное меню", callback_data="menu_main")]
     ]
@@ -304,21 +294,14 @@ def main():
     token = os.getenv("BOT_TOKEN")
     app = ApplicationBuilder().token(token).build()
 
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            ROLE: [CallbackQueryHandler(choose_role, pattern="^role_")],
-            STUDENT_ACTION: [CallbackQueryHandler(student_action, pattern="^action_")],
-            SUBJECT_CHOICE: [CallbackQueryHandler(choose_subject, pattern="^subject\|")],
-            CLASS_CHOICE: [CallbackQueryHandler(class_choice, pattern="^class\|")],
-            PHONE_INPUT: [MessageHandler(filters.CONTACT, phone_input)]
-        },
-        fallbacks=[CommandHandler("start", start)],
-        per_message=False
-    )
-
-    app.add_handler(conv_handler)
+    # Handlers
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(choose_role, pattern="^role_"))
+    app.add_handler(CallbackQueryHandler(student_action, pattern="^action_"))
+    app.add_handler(CallbackQueryHandler(choose_subject, pattern="^subject\|"))
+    app.add_handler(CallbackQueryHandler(class_choice, pattern="^class\|"))
     app.add_handler(CallbackQueryHandler(send_material_file, pattern="^material\|"))
+    app.add_handler(MessageHandler(filters.CONTACT, phone_input))
     app.add_error_handler(error_handler)
 
     print("🤖 Бот запущен...")
