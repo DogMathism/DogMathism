@@ -153,7 +153,7 @@ async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await context.bot.send_message(chat_id=ADMIN_ID, text=notify_text)
 
-    # Проверяем подписку
+    # Проверка подписки
     subscribed = await is_subscribed(update, context, subject)
     if not subscribed:
         await update.message.reply_text(
@@ -161,12 +161,8 @@ async def phone_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await update.message.reply_text(
-        f"✅ Отлично! Сейчас загружаю материалы по {SUBJECTS[subject]['accusative']}…"
-    )
-
-    # Отправка материалов с прогресс-баром
-    await send_all_materials_with_progress(update, context, subject)
+    # Показать меню материалов
+    await show_materials_menu(update, context, subject)
 
 # --- Проверка подписки ---
 async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subject: str) -> bool:
@@ -177,47 +173,68 @@ async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subj
     except:
         return False
 
-# --- Отправка всех материалов с прогресс-баром ---
-async def send_all_materials_with_progress(update: Update, context: ContextTypes.DEFAULT_TYPE, subject: str):
+# --- Показ меню материалов ---
+@typing_action
+async def show_materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, subject: str):
     files = materials_files.get(subject, [])
     if not files:
         await update.message.reply_text("📂 Для этого предмета пока нет материалов.")
         return
 
-    progress_msg = await update.message.reply_text("📦 Загружаю материалы… [░░░░░░░░░░] 0%")
-    total = len(files)
-    for i, (filename, filepath) in enumerate(files, start=1):
-        # Прогресс-бар
-        percent = int((i / total) * 100)
-        filled = int(percent / 10)
-        bar = "█" * filled + "░" * (10 - filled)
+    keyboard = [
+        [InlineKeyboardButton(name, callback_data=f"material|{subject}|{idx}")]
+        for idx, (name, _) in enumerate(files)
+    ]
+    await update.message.reply_text(
+        f"📚 Выбери материал по {SUBJECTS[subject]['accusative']}:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+# --- Отправка выбранного материала с прогресс-баром ---
+@typing_action
+async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        _, subject, idx_str = query.data.split("|")
+        idx = int(idx_str)
+    except Exception:
+        await query.message.reply_text("❌ Ошибка обработки запроса.")
+        return
+
+    files = materials_files.get(subject, [])
+    if not files or idx >= len(files):
+        await query.message.reply_text("❌ Материал не найден.")
+        return
+
+    filename, filepath = files[idx]
+
+    try:
+        progress_msg = await query.message.reply_text("Готовлю твой материал… [░░░░░░░░░░] 0%")
+        total_steps = 10
+        for step in range(1, total_steps + 1):
+            await asyncio.sleep(0.3)
+            bar = "█" * step + "░" * (total_steps - step)
+            percent = step * 10
+            try:
+                await progress_msg.edit_text(f"Готовлю твой материал… [{bar}] {percent}%")
+            except:
+                pass
+
+        with open(filepath, "rb") as f:
+            await query.message.reply_document(document=InputFile(f), filename=filename)
+
         try:
-            await progress_msg.edit_text(f"📦 Загружаю материалы… [{bar}] {percent}%")
+            await progress_msg.delete()
         except:
             pass
 
-        # Отправка файла
-        try:
-            with open(filepath, "rb") as f:
-                await update.message.reply_document(document=InputFile(f), filename=filename)
-        except FileNotFoundError:
-            await update.message.reply_text(f"❌ Файл {filename} не найден.")
-
-        await asyncio.sleep(0.5)
-
-    await progress_msg.edit_text("✅ Все материалы отправлены!")
-
-# --- Админка ---
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    username = update.effective_user.username
-    if username != ADMIN_USERNAME.strip("@"):
-        await update.message.reply_text("⛔ Нет доступа.")
-        return
-    # Здесь можешь добавить просмотр заявок
-
-# --- Ошибки ---
-async def error_handler(update, context):
-    print(f"❌ Ошибка: {context.error}")
+    except FileNotFoundError:
+        await query.message.reply_text("❌ Файл не найден на сервере.")
+    except Exception as e:
+        print(f"Ошибка send_material_file: {e}")
+        await query.message.reply_text("❌ Произошла ошибка при подготовке материала.")
 
 # --- Main ---
 def main():
@@ -228,8 +245,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(choose_subject_callback, pattern="^(" + "|".join(SUBJECTS.keys()) + ")$"))
     app.add_handler(MessageHandler(filters.CONTACT, phone_received))
-    app.add_handler(CommandHandler("admin", admin_panel))
-    app.add_error_handler(error_handler)
+    app.add_handler(CallbackQueryHandler(send_material_file, pattern=r"^material\|"))
 
     print("🤖 Бот запущен...")
     app.run_polling()
