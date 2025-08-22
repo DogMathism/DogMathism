@@ -27,36 +27,12 @@ ASK_PHONE = 0
 
 # --- Предметы с падежами ---
 SUBJECTS = {
-    "Математика": {
-        "nominative": "Математика",
-        "accusative": "математику",
-        "prepositional": "математике"
-    },
-    "Физика": {
-        "nominative": "Физика",
-        "accusative": "физику",
-        "prepositional": "физике"
-    },
-    "Химия": {
-        "nominative": "Химия",
-        "accusative": "химию",
-        "prepositional": "химии"
-    },
-    "Биология": {
-        "nominative": "Биология",
-        "accusative": "биологию",
-        "prepositional": "биологии"
-    },
-    "Русский": {
-        "nominative": "Русский язык",
-        "accusative": "русский язык",
-        "prepositional": "русском языке"
-    },
-    "Биохимия": {
-        "nominative": "Биохимия",
-        "accusative": "биохимию",
-        "prepositional": "биохимии"
-    }
+    "Математика": {"nominative": "Математика", "accusative": "математику", "prepositional": "математике"},
+    "Физика": {"nominative": "Физика", "accusative": "физику", "prepositional": "физике"},
+    "Химия": {"nominative": "Химия", "accusative": "химию", "prepositional": "химии"},
+    "Биология": {"nominative": "Биология", "accusative": "биологию", "prepositional": "биологии"},
+    "Русский": {"nominative": "Русский язык", "accusative": "русский язык", "prepositional": "русском языке"},
+    "Биохимия": {"nominative": "Биохимия", "accusative": "биохимию", "prepositional": "биохимии"}
 }
 
 # --- Админ ---
@@ -79,25 +55,13 @@ CHANNELS_BY_SUBJECT = {
 
 # --- Материалы ---
 materials_files = {
-    "Математика": [
-        ("Свойства окружности.pdf", "materials/math/Circle.pdf"),
-        ("Гайд векторы.pdf", "materials/math/Vectors.pdf"),
-    ],
-    "Физика": [
-        ("Основы механики.pdf", "materials/physics_mechanics.pdf"),
-    ],
-    "Химия": [
-        ("Таблица Менделеева.pdf", "materials/chem_periodic_table.pdf"),
-    ],
-    "Биология": [
-        ("Клеточная биология.pdf", "materials/bio_cell_biology.pdf"),
-    ],
-    "Русский": [
-        ("Правила орфографии.pdf", "materials/rus_orthography_rules.pdf"),
-    ],
-    "Биохимия": [
-        ("Основы биохимии.pdf", "materials/biochem_basics.pdf"),
-    ],
+    "Математика": [("Свойства окружности.pdf", "materials/math/Circle.pdf"),
+                   ("Гайд векторы.pdf", "materials/math/Vectors.pdf")],
+    "Физика": [("Основы механики.pdf", "materials/physics_mechanics.pdf")],
+    "Химия": [("Таблица Менделеева.pdf", "materials/chem_periodic_table.pdf")],
+    "Биология": [("Клеточная биология.pdf", "materials/bio_cell_biology.pdf")],
+    "Русский": [("Правила орфографии.pdf", "materials/rus_orthography_rules.pdf")],
+    "Биохимия": [("Основы биохимии.pdf", "materials/biochem_basics.pdf")],
 }
 
 # --- Пользователи ---
@@ -154,12 +118,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def choose_subject_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    subject = query.data
+    subject = query.data.strip()
     user_id = update.effective_user.id
+
+    subject_data = SUBJECTS.get(subject)
+    if not subject_data:
+        await query.message.reply_text("❌ Ошибка: неизвестный предмет.")
+        print(f"Ошибка: callback_data={subject} не найден в SUBJECTS")
+        return
 
     if user_id in users_data and "phone" in users_data[user_id]:
         users_data[user_id]["subject"] = subject
-        await query.message.reply_text(f"✅ ты выбрал {SUBJECTS[subject]['accusative']} 📚")
+        await query.message.reply_text(f"✅ ты выбрал {subject_data['accusative']} 📚")
         await materials_menu(update, context)
     else:
         users_data[user_id] = {"username": query.from_user.username, "subject": subject}
@@ -207,44 +177,9 @@ async def is_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE, subj
     try:
         member = await context.bot.get_chat_member(channel_username, update.effective_user.id)
         return member.status in ["member", "creator", "administrator"]
-    except Exception:
+    except Exception as e:
+        print(f"Ошибка проверки подписки: {e}")
         return False
-
-# --- Прогресс-бар и отправка материалов ---
-@typing_action
-async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data.split("|")
-    if len(data) != 3:
-        await query.message.reply_text("Ошибка обработки запроса.")
-        return
-    _, subject, idx_str = data
-    idx = int(idx_str)
-
-    files = materials_files.get(subject)
-    if not files or idx >= len(files):
-        await query.message.reply_text("Материал не найден.")
-        return
-
-    filename, filepath = files[idx]
-
-    try:
-        progress_msg = await query.message.reply_text("Готовлю твой материал… [░░░░░░░░░░] 0%")
-        total_steps = 10
-        for step in range(1, total_steps + 1):
-            await asyncio.sleep(0.5)
-            bar = "█" * step + "░" * (total_steps - step)
-            percent = step * 10
-            await progress_msg.edit_text(f"Готовлю твой материал… [{bar}] {percent}%")
-
-        with open(filepath, "rb") as f:
-            await query.message.reply_document(document=InputFile(f), filename=filename)
-
-        await progress_msg.delete()
-
-    except FileNotFoundError:
-        await query.message.reply_text("Файл с материалом не найден на сервере.")
 
 # --- Меню материалов ---
 @typing_action
@@ -256,8 +191,18 @@ async def materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     subject = user_info.get("subject")
+    subject_data = SUBJECTS.get(subject)
+    if not subject_data:
+        await update.message.reply_text("❌ Ошибка: неизвестный предмет.")
+        print(f"Ошибка: subject={subject} не найден в SUBJECTS")
+        return
 
-    subscribed = await is_subscribed(update, context, subject)
+    try:
+        subscribed = await is_subscribed(update, context, subject)
+    except Exception as e:
+        print(f"Ошибка проверки подписки: {e}")
+        subscribed = False
+
     if not subscribed:
         await update.message.reply_text(
             f"❌ для получения материалов подпишись на канал {CHANNELS_BY_SUBJECT.get(subject, 'канал')} и попробуй снова."
@@ -274,9 +219,65 @@ async def materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for idx, (name, _) in enumerate(files)
     ]
     await update.message.reply_text(
-        f"📚 выбери материал по {SUBJECTS[subject]['prepositional']}:",
+        f"📚 выбери материал по {subject_data['prepositional']}:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
+# --- Отправка материалов с прогресс-баром ---
+@typing_action
+async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        _, subject, idx_str = query.data.split("|")
+        subject = subject.strip()
+        idx = int(idx_str)
+    except Exception as e:
+        await query.message.reply_text("❌ Ошибка обработки запроса.")
+        print(f"Ошибка разбора callback_data: {query.data}, {e}")
+        return
+
+    subject_data = SUBJECTS.get(subject)
+    if not subject_data:
+        await query.message.reply_text("❌ Неизвестный предмет.")
+        print(f"Ошибка: subject={subject} не найден в SUBJECTS")
+        return
+
+    files = materials_files.get(subject)
+    if not files or idx >= len(files):
+        await query.message.reply_text("❌ Материал не найден.")
+        return
+
+    filename, filepath = files[idx]
+
+    try:
+        progress_msg = await query.message.reply_text("Готовлю твой материал… [░░░░░░░░░░] 0%")
+        total_steps = 10
+        for step in range(1, total_steps + 1):
+            await asyncio.sleep(0.3)
+            bar = "█" * step + "░" * (total_steps - step)
+            percent = step * 10
+            try:
+                await progress_msg.edit_text(f"Готовлю твой материал… [{bar}] {percent}%")
+            except Exception as e:
+                print(f"Ошибка обновления прогресс-бара: {e}")
+
+        try:
+            with open(filepath, "rb") as f:
+                await query.message.reply_document(document=InputFile(f), filename=filename)
+        except FileNotFoundError:
+            await query.message.reply_text("❌ Файл с материалом не найден на сервере.")
+            print(f"Файл не найден: {filepath}")
+
+        try:
+            await progress_msg.delete()
+        except Exception:
+            pass
+
+    except Exception as e:
+        await query.message.reply_text("❌ Произошла ошибка при подготовке материала.")
+        print(f"Ошибка send_material_file: {e}")
 
 # --- Админка ---
 @typing_action
@@ -300,6 +301,18 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ отменено.")
     return ConversationHandler.END
 
+# --- Глобальный обработчик ошибок ---
+async def error_handler(update, context):
+    print(f"❌ Ошибка: {context.error}")
+    if update:
+        try:
+            if update.message:
+                await update.message.reply_text("Произошла ошибка, попробуйте снова.")
+            elif update.callback_query:
+                await update.callback_query.message.reply_text("Произошла ошибка, попробуйте снова.")
+        except:
+            pass
+
 # --- Main ---
 def main():
     keep_alive()
@@ -309,9 +322,7 @@ def main():
     # ConversationHandler для запроса телефона
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
-        states={
-            ASK_PHONE: [MessageHandler(filters.CONTACT, phone_received)],
-        },
+        states={ASK_PHONE: [MessageHandler(filters.CONTACT, phone_received)]},
         fallbacks=[CommandHandler("cancel", cancel)],
         per_message=True
     )
@@ -326,7 +337,11 @@ def main():
     # Кнопка "материалы"
     app.add_handler(MessageHandler(filters.Regex("^(📂 материалы)$"), materials_menu))
 
+    # Админка
     app.add_handler(CommandHandler("admin", admin_panel))
+
+    # Ошибки
+    app.add_error_handler(error_handler)
 
     print("🤖 Бот запущен...")
     app.run_polling()
