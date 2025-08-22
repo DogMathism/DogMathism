@@ -324,7 +324,7 @@ def main():
         entry_points=[CommandHandler("start", start)],
         states={ASK_PHONE: [MessageHandler(filters.CONTACT, phone_received)]},
         fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=False
+        per_message=True
     )
     app.add_handler(conv_handler)
 
