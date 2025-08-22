@@ -95,16 +95,16 @@ def read_all_entries():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton(data["nominative"], callback_data=subject)] for subject, data in SUBJECTS.items()]
     await update.message.reply_text(
-        "👋 Добро пожаловать в <b>DogWarts</b> — школа, где знания сильнее магии!\n\n"
-        "📚 Доступные предметы:\n\n"
+        "👋 Добро пожаловать в <b>DogWarts</b> - <b>школу</b>, где знания сильнее <b>магии</b>\n\n"
+        "📚 Предметы:\n\n"
         "🧠 Математика - @DogMathic\n"
         "🧪 Химия - @DogChemik\n"
         "⚛️ Биохимия - @DogBioChemik\n"
         "📖 Русский язык - @DogRussik\n"
         "🌿 Биология - @DogBio\n"
         "⚙️ Физика - @DogPhysic\n\n"
-        f"💬 Вопросы и запись — {ADMIN_USERNAME}\n\n"
-        "Выбирай предмет 👇",
+        f"💬 Вопросы и запись - {ADMIN_USERNAME}\n\n"
+        "Выбирай предмет и начни свой путь к успеху 👇",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
