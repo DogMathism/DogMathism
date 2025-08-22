@@ -1,246 +1,466 @@
 import os
 import asyncio
+from functools import wraps
 from telegram import (
-    Update, InlineKeyboardMarkup, InlineKeyboardButton, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, InputFile
+    Update, InlineKeyboardButton, InlineKeyboardMarkup,
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InputFile
 )
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
+    MessageHandler, ContextTypes, filters
 )
-from keep_alive import keep_alive
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# --- Google Sheets ---
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("google-credentials.json", scope)
-client = gspread.authorize(creds)
-sheet = client.open("DogWarts_Requests").sheet1
+# ================== НАСТРОЙКИ ==================
 
-# --- Настройки ---
-ADMIN_ID = os.getenv("ADMIN_ID")
+# Админ
+ADMIN_ID = 7972251746  # int
+ADMIN_USERNAME = "@dogwarts_admin"
 
-materials_files = {
-    "Математика": [("Алгебра.pdf", "materials/math/algebra.pdf")],
-    "Химия": [("Химия.pdf", "materials/chemistry/chemistry.pdf")],
-    "Биология": [("Биология.pdf", "materials/biology/biology.pdf")],
-    "Физика": [("Физика.pdf", "materials/physics/physics.pdf")],
-    "Русский язык": [("Русский.pdf", "materials/russian/russian.pdf")],
-    "Биохимия": [("Биохимия.pdf", "materials/biochem/biochemistry.pdf")]
-}
+# Google Sheets
+GOOGLE_SHEET_NAME = "DogMathism"
+CREDENTIALS_FILE = "credentials.json"
 
+# Каналы по предметам
 CHANNELS_BY_SUBJECT = {
     "Математика": "@DogMathic",
+    "Физика": "@DogPhysic",
     "Химия": "@DogChemik",
     "Биология": "@DogBio",
-    "Физика": "@DogPhysic",
-    "Русский язык": "@DogRussik",
-    "Биохимия": "@DogBioChemik"
+    "Русский": "@DogRussik",
+    "Биохимия": "@DogBioChemik",
 }
 
+# Материалы (название, путь к файлу)
+materials_files = {
+    "Математика": [("Свойства окружности.pdf", "materials/math/Circle.pdf"),
+                   ("Гайд векторы.pdf", "materials/math/Vectors.pdf")],
+    "Физика": [("Основы механики.pdf", "materials/physics_mechanics.pdf")],
+    "Химия": [("Таблица Менделеева.pdf", "materials/chem_periodic_table.pdf")],
+    "Биология": [("Клеточная биология.pdf", "materials/bio_cell_biology.pdf")],
+    "Русский": [("Правила орфографии.pdf", "materials/rus_orthography_rules.pdf")],
+    "Биохимия": [("Основы биохимии.pdf", "materials/biochem_basics.pdf")],
+}
+
+# Служебное состояние пользователей
 users_data = {}
 
-# --- Вспомогательные функции ---
-async def typing_action(func):
-    async def wrapper(update, context, *args, **kwargs):
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+# ================== УТИЛИТЫ ==================
+
+def typing_action(func):
+    @wraps(func)
+    async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        chat_id = update.effective_chat.id if update.effective_chat else None
+        if chat_id:
+            try:
+                await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+            except:
+                pass
+        await asyncio.sleep(0.2)
         return await func(update, context, *args, **kwargs)
-    return wrapper
+    return wrapped
 
-def write_to_sheet(data):
+def write_to_sheet(row_dict: dict):
+    """Пишем строку в Google Sheets."""
     try:
-        sheet.append_row([data.get("role"), data.get("nickname"), data.get("phone", "-"),
-                          data.get("class", "-"), data.get("subject", "-")])
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, scope)
+        client = gspread.authorize(creds)
+        sheet = client.open(GOOGLE_SHEET_NAME).sheet1
+        row = [
+            row_dict.get("timestamp", "-"),
+            row_dict.get("role", "-"),
+            row_dict.get("action", "-"),
+            row_dict.get("subject", "-"),
+            row_dict.get("class", "-"),
+            row_dict.get("nickname", "-"),
+            row_dict.get("phone", "-"),
+            str(row_dict.get("user_id", "-")),
+        ]
+        sheet.append_row(row)
     except Exception as e:
-        print(f"Ошибка записи в Google Sheets: {e}")
+        print(f"[Sheets] Ошибка записи: {e}")
 
-async def check_subscription(update, context, subject):
-    channel_username = CHANNELS_BY_SUBJECT.get(subject)
-    if not channel_username:
+async def notify_admin(context: ContextTypes.DEFAULT_TYPE, text: str):
+    try:
+        await context.bot.send_message(chat_id=ADMIN_ID, text=text)
+    except Exception as e:
+        print(f"[Admin] Ошибка отправки админу: {e}")
+
+def subjects_keyboard(exclude=None, only=None):
+    subjects_all = list(materials_files.keys())
+    if exclude:
+        subjects = [s for s in subjects_all if s not in exclude]
+    elif only:
+        subjects = [s for s in subjects_all if s in only]
+    else:
+        subjects = subjects_all
+    rows = [[InlineKeyboardButton(s, callback_data=f"subject|{s}")] for s in subjects]
+    return InlineKeyboardMarkup(rows)
+
+def class_keyboard():
+    rows = [
+        [InlineKeyboardButton("5", callback_data="class|5"),
+         InlineKeyboardButton("6", callback_data="class|6")],
+        [InlineKeyboardButton("7", callback_data="class|7"),
+         InlineKeyboardButton("8", callback_data="class|8")],
+        [InlineKeyboardButton("10", callback_data="class|10")],
+        [InlineKeyboardButton("Подготовка к ОГЭ", callback_data="class|OGE"),
+         InlineKeyboardButton("Подготовка к ЕГЭ", callback_data="class|EGE")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+async def check_subscription(context: ContextTypes.DEFAULT_TYPE, user_id: int, subject: str) -> bool:
+    channel = CHANNELS_BY_SUBJECT.get(subject)
+    if not channel:
         return True
     try:
-        member = await context.bot.get_chat_member(channel_username, update.effective_user.id)
-        return member.status in ["member", "creator", "administrator"]
+        member = await context.bot.get_chat_member(chat_id=channel, user_id=user_id)
+        return member.status in ("member", "creator", "administrator")
     except Exception as e:
-        print(f"Ошибка проверки подписки: {e}")
+        print(f"[Subscribe] Ошибка проверки ({channel}): {e}")
         return False
 
-async def return_to_role_selection(update):
-    user_id = update.effective_user.id
-    users_data[user_id]["step"] = "role"
-    keyboard = [
-        [InlineKeyboardButton("Ученик", callback_data="role_student")],
-        [InlineKeyboardButton("Родитель", callback_data="role_parent")],
-        [InlineKeyboardButton("Студент ВУЗа", callback_data="role_university")],
-        [InlineKeyboardButton("Преподаватель", callback_data="role_teacher")]
-    ]
-    await asyncio.sleep(1)
-    await update.callback_query.message.reply_text(
-        "Выберите вашу роль, чтобы пройти другой сценарий:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+async def reply(update: Update, text: str, **kwargs):
+    """Удобная отправка в текущий поток (message или callback)."""
+    if update.message:
+        return await update.message.reply_text(text, **kwargs)
+    elif update.callback_query:
+        return await update.callback_query.message.reply_text(text, **kwargs)
 
-# --- Handlers ---
+def get_username(update: Update) -> str:
+    uname = update.effective_user.username
+    if uname:
+        if not uname.startswith("@"):
+            uname = f"@{uname}"
+        return uname
+    return ""  # нет username — попросим ввести вручную
+
+# ================== ХЕНДЛЕРЫ ==================
+
+# /start
 @typing_action
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    users_data[user_id] = {"step": "role"}
+    users_data[user_id] = {"step": "role"}  # сброс сценария
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Ученик", callback_data="role|student")],
+        [InlineKeyboardButton("Родитель", callback_data="role|parent")],
+        [InlineKeyboardButton("Студент ВУЗа", callback_data="role|university")],
+        [InlineKeyboardButton("Преподаватель", callback_data="role|teacher")],
+    ])
     await update.message.reply_text(
-        "👋 **Добро пожаловать в DogWarts** – школу, где знания сильнее магии\n\n"
+        "👋 Добро пожаловать в <b>DogWarts</b> - <b>школу</b>, где знания сильнее <b>магии</b>\n\n"
         "Выберите вашу роль:",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("Ученик", callback_data="role_student")],
-            [InlineKeyboardButton("Родитель", callback_data="role_parent")],
-            [InlineKeyboardButton("Студент ВУЗа", callback_data="role_university")],
-            [InlineKeyboardButton("Преподаватель", callback_data="role_teacher")]
-        ]),
-        parse_mode="Markdown"
+        parse_mode="HTML",
+        reply_markup=kb
     )
 
-async def choose_role(update: Update, context):
-    query = update.callback_query
-    await query.answer()
-    role = query.data.replace("role_", "")
+# Выбор роли
+@typing_action
+async def choose_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
     user_id = update.effective_user.id
-    users_data[user_id]["role"] = role
+    role = q.data.split("|")[1]  # student / parent / university / teacher
+    users_data[user_id] = {"step": None, "role": role, "user_id": user_id}
+
+    if role == "teacher":
+        await q.message.reply_text(f"Если вы хотите работать у нас, свяжитесь с админом: {ADMIN_USERNAME}")
+        await return_to_role_selection(update)
+        return
+
+    if role == "university":
+        # Студент ВУЗа: только биохимия, без телефона/класса
+        users_data[user_id]["action"] = "register"  # по сути запись на биохимию
+        users_data[user_id]["subject"] = "Биохимия"
+        await ensure_nickname_then_continue(update, context, need_class=False, need_phone=False)
+        return
+
+    if role == "parent":
+        # Только запись
+        users_data[user_id]["action"] = "register"
+        await q.message.reply_text("Выберите предмет:", reply_markup=subjects_keyboard(exclude=["Биохимия"]))
+        return
 
     if role == "student":
-        keyboard = [
-            [InlineKeyboardButton("Запись на занятия", callback_data="action_register")],
-            [InlineKeyboardButton("Полезные материалы", callback_data="action_materials")]
-        ]
-        await query.message.reply_text("Выберите действие:", reply_markup=InlineKeyboardMarkup(keyboard))
-    elif role == "parent":
-        await query.message.reply_text("Выберите предмет для записи:",
-                                       reply_markup=subjects_keyboard(exclude=["Биохимия"]))
-    elif role == "university":
-        await query.message.reply_text("Доступна запись на предмет Биохимия:",
-                                       reply_markup=subjects_keyboard(only=["Биохимия"]))
-    else:
-        await query.message.reply_text("Если Вы хотите работать у нас, свяжитесь с админом: @DogWarts_admin")
+        # Выбор действия
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Запись на занятия", callback_data="action|register")],
+            [InlineKeyboardButton("Получить полезные материалы", callback_data="action|materials")],
+        ])
+        await q.message.reply_text("Выберите действие:", reply_markup=kb)
+        return
 
-def subjects_keyboard(exclude=None, only=None):
-    subjects = [s for s in materials_files.keys() if (not exclude or s not in exclude)]
-    if only:
-        subjects = [s for s in subjects if s in only]
-    return InlineKeyboardMarkup([[InlineKeyboardButton(s, callback_data=f"subject|{s}")] for s in subjects])
-
-async def student_action(update, context):
-    query = update.callback_query
-    await query.answer()
-    action = query.data.replace("action_", "")
+# Действия ученика
+@typing_action
+async def student_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
     user_id = update.effective_user.id
+    action = q.data.split("|")[1]  # register / materials
     users_data[user_id]["action"] = action
 
     if action == "register":
-        await query.message.reply_text("Выберите предмет:", reply_markup=subjects_keyboard(exclude=["Биохимия"]))
+        await q.message.reply_text("Выберите предмет:", reply_markup=subjects_keyboard(exclude=["Биохимия"]))
     else:
-        await query.message.reply_text("Выберите предмет для материалов:", reply_markup=subjects_keyboard())
+        await q.message.reply_text("Выберите предмет для материалов:", reply_markup=subjects_keyboard())
 
-async def choose_subject(update, context):
-    query = update.callback_query
-    await query.answer()
-    _, subject = query.data.split("|")
+# Выбор предмета
+@typing_action
+async def choose_subject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
     user_id = update.effective_user.id
+    subject = q.data.split("|")[1]
     users_data[user_id]["subject"] = subject
 
-    await query.message.reply_text("Введите ваш никнейм (@username):")
-    users_data[user_id]["step"] = "nickname"
-
-async def nickname_input(update, context):
-    user_id = update.effective_user.id
-    text = update.message.text
-    users_data[user_id]["nickname"] = text
-
     role = users_data[user_id].get("role")
-    action = users_data[user_id].get("action", "")
+    action = users_data[user_id].get("action")
 
-    if role in ["student", "parent"] and action == "register":
-        # Запрос телефона
-        button = KeyboardButton("📱 Отправить номер телефона", request_contact=True)
-        await update.message.reply_text("Отправьте ваш номер телефона:", reply_markup=ReplyKeyboardMarkup([[button]], resize_keyboard=True))
-        users_data[user_id]["step"] = "phone"
+    # Требования по сбору данных:
+    # - Запись (student/parent): НИК + КЛАСС + ТЕЛЕФОН
+    # - Материалы (student): НИК + КЛАСС, телефон не нужен
+    if role in ("student", "parent") and action == "register":
+        await ensure_nickname_then_continue(update, context, need_class=True, need_phone=True)
+    elif role == "student" and action == "materials":
+        await ensure_nickname_then_continue(update, context, need_class=True, need_phone=False)
+    elif role == "university":
+        # сюда обычно не попадем, но на всякий случай
+        await ensure_nickname_then_continue(update, context, need_class=False, need_phone=False)
     else:
-        await save_and_send_materials(update, context)
+        await ensure_nickname_then_continue(update, context, need_class=False, need_phone=False)
 
-async def phone_input(update, context):
+# --- СБОР НИКНЕЙМА / КЛАССА / ТЕЛЕФОНА ---
+
+async def ensure_nickname_then_continue(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                        need_class: bool, need_phone: bool):
     user_id = update.effective_user.id
+    # Попробуем взять username
+    username = get_username(update)
+    if username:
+        users_data[user_id]["nickname"] = username
+        if need_class:
+            users_data[user_id]["next_need_phone"] = need_phone
+            await ask_class(update)
+        else:
+            if need_phone:
+                await ask_phone(update)
+            else:
+                await finalize_and_materials(update, context)
+    else:
+        # Просим никнейм текстом
+        users_data[user_id]["step"] = "nickname"
+        await reply(update, "Введите ваш никнейм (в формате @username):")
+
+@typing_action
+async def nickname_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    # Обрабатываем только если ждём ник
+    if users_data.get(user_id, {}).get("step") != "nickname":
+        return
+    text = (update.message.text or "").strip()
+    if not text.startswith("@") or len(text) < 2:
+        await update.message.reply_text("Пожалуйста, пришлите ник в формате @username.")
+        return
+    users_data[user_id]["nickname"] = text
+    users_data[user_id]["step"] = None
+
+    # Определяем, что дальше нужно
+    role = users_data[user_id].get("role")
+    action = users_data[user_id].get("action")
+    if role in ("student", "parent") and action == "register":
+        # Нужен класс + телефон
+        users_data[user_id]["next_need_phone"] = True
+        await ask_class(update)
+    elif role == "student" and action == "materials":
+        # Нужен только класс
+        users_data[user_id]["next_need_phone"] = False
+        await ask_class(update)
+    else:
+        # Студент ВУЗа / прочее — без класса/телефона
+        await finalize_and_materials(update, context)
+
+async def ask_class(update: Update):
+    await reply(update, "Выберите класс:", reply_markup=class_keyboard())
+
+@typing_action
+async def class_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    user_id = update.effective_user.id
+    choice = q.data.split("|")[1]  # 5/6/7/8/10/OGE/EGE
+    users_data[user_id]["class"] = choice
+
+    need_phone = users_data[user_id].pop("next_need_phone", False)
+    if need_phone:
+        await ask_phone(update)
+    else:
+        await finalize_and_materials(update, context)
+
+async def ask_phone(update: Update):
+    users_data[update.effective_user.id]["step"] = "phone"
+    kb = ReplyKeyboardMarkup([[KeyboardButton("📱 Отправить контакт", request_contact=True)]],
+                             resize_keyboard=True, one_time_keyboard=True)
+    await reply(update, "Отправьте ваш номер телефона:", reply_markup=kb)
+
+@typing_action
+async def phone_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if users_data.get(user_id, {}).get("step") != "phone":
+        return
     contact = update.message.contact
+    if not contact:
+        await update.message.reply_text("Пожалуйста, отправьте контакт кнопкой ниже.")
+        return
     users_data[user_id]["phone"] = contact.phone_number
-    await update.message.reply_text("Спасибо! Теперь подготовлю материалы…", reply_markup=ReplyKeyboardRemove())
-    await save_and_send_materials(update, context)
+    users_data[user_id]["step"] = None
+    await update.message.reply_text("Спасибо!", reply_markup=ReplyKeyboardRemove())
+    await finalize_and_materials(update, context)
 
-async def save_and_send_materials(update, context):
+# --- ФИНАЛ: СОХРАНЕНИЕ + ПОДПИСКА + МЕНЮ МАТЕРИАЛОВ ---
+
+async def finalize_and_materials(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    data = users_data[user_id]
-    write_to_sheet(data)
+    data = users_data.get(user_id, {}).copy()
+    data.setdefault("subject", "-")
+    data.setdefault("class", "-")
+    data.setdefault("phone", "-")
+    data.setdefault("role", "-")
+    data.setdefault("action", "-")
+    data["timestamp"] = asyncio.get_event_loop().time()  # отметка (можно заменить на datetime)
+
+    # Пишем в Google Sheets
+    write_to_sheet({
+        "timestamp": data["timestamp"],
+        "role": data["role"],
+        "action": data["action"],
+        "subject": data["subject"],
+        "class": data["class"],
+        "nickname": data.get("nickname", "-"),
+        "phone": data.get("phone", "-"),
+        "user_id": user_id
+    })
 
     # Уведомление админу
-    notify_text = (
-        f"🆕 Новая заявка!\n"
-        f"👤 {data.get('nickname')}\n"
-        f"📞 {data.get('phone', '-')}\n"
-        f"📘 {data.get('subject')}\n"
-        f"🎓 Роль: {data.get('role')}"
+    note = (
+        "🆕 Новая заявка/запрос материалов\n"
+        f"🎓 Роль: {data['role']}\n"
+        f"🧩 Действие: {data['action']}\n"
+        f"📘 Предмет: {data['subject']}\n"
+        f"🧑‍🎓 Класс/подготовка: {data['class']}\n"
+        f"👤 Ник: {data.get('nickname', '-')}\n"
+        f"📞 Телефон: {data.get('phone', '-')}\n"
+        f"🆔 ID: {user_id}"
     )
-    try:
-        await context.bot.send_message(chat_id=ADMIN_ID, text=notify_text)
-    except Exception as e:
-        print(f"Ошибка уведомления админу: {e}")
+    await notify_admin(context, note)
 
-    # Проверка подписки
-    subscribed = await check_subscription(update, context, data.get("subject"))
-    if not subscribed:
-        await update.message.reply_text(f"❌ Подпишитесь на канал {CHANNELS_BY_SUBJECT[data.get('subject')]} для получения материалов!")
-        return
+    # Проверка подписки на канал предмета — перед показом материалов
+    subject = data["subject"]
+    if subject and subject in CHANNELS_BY_SUBJECT:
+        subscribed = await check_subscription(context, user_id, subject)
+        if not subscribed:
+            await reply(
+                update,
+                f"❌ Для получения материалов подпишитесь на канал {CHANNELS_BY_SUBJECT[subject]} и попробуйте снова."
+            )
+            # Покажем кнопку выбора роли, чтобы юзер мог пойти в другой сценарий
+            await return_to_role_selection(update)
+            return
 
-    # Отправка материалов с прогресс-баром
-    await send_materials_menu(update, context, user_id)
+    # Показ меню материалов по предмету
+    await send_materials_menu(update, context, subject)
+
+    # И сразу даём возможность пройти другой сценарий
     await return_to_role_selection(update)
 
-async def send_materials_menu(update, context, user_id):
-    subject = users_data[user_id]["subject"]
-    files = materials_files.get(subject)
-    if files:
-        keyboard = [[InlineKeyboardButton(name, callback_data=f"material|{subject}|{idx}")]
-                    for idx, (name, _) in enumerate(files)]
-        await update.message.reply_text(f"📚 Выберите материал по {subject}:", reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def send_material_file(update, context):
-    query = update.callback_query
-    await query.answer()
-    _, subject, idx_str = query.data.split("|")
-    idx = int(idx_str)
-    files = materials_files.get(subject)
-    if not files or idx >= len(files):
-        await query.message.reply_text("❌ Файл не найден.")
+async def send_materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, subject: str):
+    files = materials_files.get(subject, [])
+    if not files:
+        await reply(update, "📂 Для выбранного предмета пока нет материалов.")
         return
-    filename, filepath = files[idx]
-    progress_msg = await query.message.reply_text("Готовлю материал… [░░░░░░░░░░] 0%")
-    total_steps = 10
-    for step in range(1, total_steps + 1):
-        await asyncio.sleep(0.3)
-        bar = "█" * step + "░" * (total_steps - step)
-        await progress_msg.edit_text(f"Готовлю материал… [{bar}] {step*10}%")
-    with open(filepath, "rb") as f:
-        await query.message.reply_document(document=InputFile(f), filename=filename)
-    await progress_msg.delete()
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(name, callback_data=f"material|{subject}|{i}")]
+        for i, (name, _) in enumerate(files)
+    ])
+    await reply(update, f"📚 Выберите материал по {subject}:", reply_markup=kb)
 
-# --- Main ---
+@typing_action
+async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    try:
+        _, subject, idx_str = q.data.split("|")
+        idx = int(idx_str)
+    except Exception:
+        await q.message.reply_text("❌ Ошибка обработки запроса.")
+        return
+
+    files = materials_files.get(subject, [])
+    if idx >= len(files):
+        await q.message.reply_text("❌ Материал не найден.")
+        return
+
+    filename, filepath = files[idx]
+    try:
+        progress = await q.message.reply_text("Готовлю материал… [░░░░░░░░░░] 0%")
+        total = 10
+        for step in range(1, total + 1):
+            await asyncio.sleep(0.25)
+            bar = "█" * step + "░" * (total - step)
+            await progress.edit_text(f"Готовлю материал… [{bar}] {step*10}%")
+        with open(filepath, "rb") as f:
+            await q.message.reply_document(document=InputFile(f), filename=filename)
+        try:
+            await progress.delete()
+        except:
+            pass
+    except FileNotFoundError:
+        await q.message.reply_text("❌ Файл не найден на сервере.")
+    except Exception as e:
+        print(f"[Material] Ошибка: {e}")
+        await q.message.reply_text("❌ Произошла ошибка при подготовке материала.")
+
+# Возврат к выбору роли
+async def return_to_role_selection(update: Update):
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Ученик", callback_data="role|student")],
+        [InlineKeyboardButton("Родитель", callback_data="role|parent")],
+        [InlineKeyboardButton("Студент ВУЗа", callback_data="role|university")],
+        [InlineKeyboardButton("Преподаватель", callback_data="role|teacher")],
+    ])
+    await asyncio.sleep(0.6)
+    await reply(update, "Можете выбрать другой сценарий:", reply_markup=kb)
+
+# ================== MAIN ==================
+
 def main():
-    keep_alive()
     token = os.getenv("BOT_TOKEN")
+    if not token:
+        print("❌ BOT_TOKEN не задан в переменных окружения.")
+        return
+
     app = ApplicationBuilder().token(token).build()
 
+    # Команды
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(choose_role, pattern="^role_"))
-    app.add_handler(CallbackQueryHandler(student_action, pattern="^action_"))
-    app.add_handler(CallbackQueryHandler(choose_subject, pattern="^subject\|"))
-    app.add_handler(CallbackQueryHandler(send_material_file, pattern="^material\|"))
-    app.add_handler(MessageHandler(filters.CONTACT, phone_input))
+
+    # Callback-кнопки
+    app.add_handler(CallbackQueryHandler(choose_role, pattern=r"^role\|"))
+    app.add_handler(CallbackQueryHandler(student_action, pattern=r"^action\|"))
+    app.add_handler(CallbackQueryHandler(choose_subject, pattern=r"^subject\|"))
+    app.add_handler(CallbackQueryHandler(class_choice, pattern=r"^class\|"))
+    app.add_handler(CallbackQueryHandler(send_material_file, pattern=r"^material\|"))
+
+    # Текст для никнейма (только когда step == nickname)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, nickname_input))
 
+    # Контакт (телефон)
+    app.add_handler(MessageHandler(filters.CONTACT, phone_input))
+
     print("🤖 Бот запущен...")
-    app.run_polling()
+    app.run_polling(allowed_updates=["message", "callback_query"])
 
 if __name__ == "__main__":
     main()
