@@ -11,6 +11,8 @@ from telegram.ext import (
 )
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import datetime
+import pytz  # нужно установить: pip install pytz
 
 # ================== НАСТРОЙКИ ==================
 
@@ -329,11 +331,16 @@ async def finalize_and_materials(update: Update, context: ContextTypes.DEFAULT_T
     data.setdefault("phone", "-")
     data.setdefault("role", "-")
     data.setdefault("action", "-")
-    data["timestamp"] = asyncio.get_event_loop().time()  # отметка (можно заменить на datetime)
+    tz = pytz.timezone("Europe/Moscow")
+    now = datetime.datetime.now(tz)
+    timestamp_for_sheets = now.strftime("%Y-%m-%d %H:%M:%S")  # ISO для Google Sheets
+    timestamp_for_admin = now.strftime("%d.%m.%Y %H:%M")      # Красиво для сообщения
+    data["timestamp"] = timestamp_for_sheets
+
 
     # Пишем в Google Sheets
     write_to_sheet({
-        "timestamp": data["timestamp"],
+        "timestamp": timestamp_for_sheets,
         "role": data["role"],
         "action": data["action"],
         "subject": data["subject"],
@@ -346,6 +353,7 @@ async def finalize_and_materials(update: Update, context: ContextTypes.DEFAULT_T
     # Уведомление админу
     note = (
         "🆕 Новая заявка/запрос материалов\n"
+        f"📅 Время: {timestamp_for_admin}\n"
         f"🎓 Роль: {data['role']}\n"
         f"🧩 Действие: {data['action']}\n"
         f"📘 Предмет: {data['subject']}\n"
