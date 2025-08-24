@@ -339,7 +339,7 @@ async def finalize_and_materials(update: Update, context: ContextTypes.DEFAULT_T
 
 
     # Пишем в Google Sheets
-    write_to_sheet({
+    await asyncio.to_thread(write_to_sheet, {
         "timestamp": timestamp_for_sheets,
         "role": data["role"],
         "action": data["action"],
