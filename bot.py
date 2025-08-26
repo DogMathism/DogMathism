@@ -1,4 +1,4 @@
-    import os
+import os
 import asyncio
 from functools import wraps
 from telegram import (
@@ -451,12 +451,13 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except:
             pass
             
+            await return_to_role_selection(update)  # ✅ Возврат после скачивания файла
+            
     except FileNotFoundError:
         await q.message.reply_text("❌ Файл не найден на сервере.")
     except Exception as e:
         print(f"[Material] Ошибка: {e}")
         await q.message.reply_text("❌ Произошла ошибка при подготовке материала.")
-        await return_to_role_selection(update)  # ✅ Возврат после скачивания файла
 
 # Возврат к выбору роли
 async def return_to_role_selection(update: Update):
