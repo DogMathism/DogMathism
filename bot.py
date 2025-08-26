@@ -1,4 +1,4 @@
-import os
+    import os
 import asyncio
 from functools import wraps
 from telegram import (
@@ -385,9 +385,6 @@ async def finalize_and_materials(update: Update, context: ContextTypes.DEFAULT_T
     # Показ меню материалов по предмету
     await send_materials_menu(update, context, subject)
 
-    # И сразу даём возможность пройти другой сценарий
-    await return_to_role_selection(update)
-    
 async def check_subscription_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -400,7 +397,6 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
     if subscribed:
         await query.edit_message_text("✅ Подписка подтверждена! Вот ваши материалы:")
         await send_materials_menu(update, context, subject)
-        await return_to_role_selection(update)  # ✅ Возврат к выбору роли
     else:
         keyboard = [
             [InlineKeyboardButton("✅ Проверить подписку", callback_data=f"check_sub_{subject}")]
@@ -454,6 +450,7 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await progress.delete()
         except:
             pass
+            
     except FileNotFoundError:
         await q.message.reply_text("❌ Файл не найден на сервере.")
     except Exception as e:
