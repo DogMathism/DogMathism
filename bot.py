@@ -376,7 +376,7 @@ async def finalize_and_materials(update: Update, context: ContextTypes.DEFAULT_T
 
             await reply(
                 update,
-                f"❌ Для получения материалов подпишитесь на канал {CHANNELS_BY_SUBJECT[subject]} и попробуйте снова."
+                f"❌ Для получения материалов подпишитесь на канал {CHANNELS_BY_SUBJECT[subject]} и попробуйте снова.",
                 reply_markup=reply_markup
             )
             
