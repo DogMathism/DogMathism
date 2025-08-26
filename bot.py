@@ -379,7 +379,7 @@ async def finalize_and_materials(update: Update, context: ContextTypes.DEFAULT_T
                 f"❌ Для получения материалов подпишитесь на канал {CHANNELS_BY_SUBJECT[subject]} и попробуйте снова.",
                 reply_markup=reply_markup
             )
-            await return_to_role_selection(update)
+            
             return
 
     # Показ меню материалов по предмету
@@ -400,6 +400,7 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
     if subscribed:
         await query.edit_message_text("✅ Подписка подтверждена! Вот ваши материалы:")
         await send_materials_menu(update, context, subject)
+        await return_to_role_selection(update)  # ✅ Возврат к выбору роли
     else:
         keyboard = [
             [InlineKeyboardButton("✅ Проверить подписку", callback_data=f"check_sub_{subject}")]
@@ -458,6 +459,7 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except Exception as e:
         print(f"[Material] Ошибка: {e}")
         await q.message.reply_text("❌ Произошла ошибка при подготовке материала.")
+        await return_to_role_selection(update)  # ✅ Возврат после скачивания файла
 
 # Возврат к выбору роли
 async def return_to_role_selection(update: Update):
