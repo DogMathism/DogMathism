@@ -379,7 +379,7 @@ async def finalize_and_materials(update: Update, context: ContextTypes.DEFAULT_T
                 f"❌ Для получения материалов подпишитесь на канал {CHANNELS_BY_SUBJECT[subject]} и попробуйте снова.",
                 reply_markup=reply_markup
             )
-            
+            await return_to_role_selection(update)
             return
 
     # Показ меню материалов по предмету
