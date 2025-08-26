@@ -373,6 +373,9 @@ async def finalize_and_materials(update: Update, context: ContextTypes.DEFAULT_T
                 update,
                 f"❌ Для получения материалов подпишитесь на канал {CHANNELS_BY_SUBJECT[subject]} и попробуйте снова."
             )
+            keyboard = [
+                    [InlineKeyboardButton("✅ Проверить подписку", callback_data=f"check_sub_{subject}")]
+            ]
             # Покажем кнопку выбора роли, чтобы юзер мог пойти в другой сценарий
             await return_to_role_selection(update)
             return
@@ -382,6 +385,30 @@ async def finalize_and_materials(update: Update, context: ContextTypes.DEFAULT_T
 
     # И сразу даём возможность пройти другой сценарий
     await return_to_role_selection(update)
+    
+async def check_subscription_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+    subject = query.data.replace("check_sub_", "")
+
+    subscribed = await check_subscription(context, user_id, subject)
+
+    if subscribed:
+        await query.edit_message_text("✅ Подписка подтверждена! Вот ваши материалы:")
+        await send_materials_menu(update, context, subject)
+    else:
+        keyboard = [
+            [InlineKeyboardButton("✅ Проверить подписку", callback_data=f"check_sub_{subject}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            f"❌ Вы всё ещё не подписаны на {CHANNELS_BY_SUBJECT[subject]}.\n"
+            "Подпишитесь и нажмите кнопку ещё раз.",
+            reply_markup=reply_markup
+        )
+
 
 async def send_materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, subject: str):
     files = materials_files.get(subject, [])
@@ -460,6 +487,7 @@ def main():
     app.add_handler(CallbackQueryHandler(choose_subject, pattern=r"^subject\|"))
     app.add_handler(CallbackQueryHandler(class_choice, pattern=r"^class\|"))
     app.add_handler(CallbackQueryHandler(send_material_file, pattern=r"^material\|"))
+    app.add_handler(CallbackQueryHandler(check_subscription_callback, pattern=r"^check_sub_"))
 
     # Текст для никнейма (только когда step == nickname)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, nickname_input))
