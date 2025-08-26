@@ -401,7 +401,12 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
         await progress.edit_text(f"Проверяю подписку… [{bar}] {step*10}%")
 
     subscribed = await check_subscription(context, user_id, subject)
-
+    
+    try:
+        await progress.delete()  # удаляем сообщение прогресса
+    except:
+        pass
+        
     if subscribed:
         await query.edit_message_text("✅ Подписка подтверждена! Вот ваши материалы:")
         await send_materials_menu(update, context, subject)
