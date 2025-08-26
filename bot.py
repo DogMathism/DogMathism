@@ -450,14 +450,16 @@ async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await progress.delete()
         except:
             pass
-            
-            await return_to_role_selection(update)  # ✅ Возврат после скачивания файла
-            
+
     except FileNotFoundError:
         await q.message.reply_text("❌ Файл не найден на сервере.")
     except Exception as e:
         print(f"[Material] Ошибка: {e}")
         await q.message.reply_text("❌ Произошла ошибка при подготовке материала.")
+        return
+
+    # ✅ Возврат к выбору роли после успешного скачивания
+    await return_to_role_selection(update)
 
 # Возврат к выбору роли
 async def return_to_role_selection(update: Update):
