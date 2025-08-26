@@ -372,6 +372,8 @@ async def finalize_and_materials(update: Update, context: ContextTypes.DEFAULT_T
             keyboard = [
                     [InlineKeyboardButton("✅ Проверить подписку", callback_data=f"check_sub_{subject}")]
             ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
             await reply(
                 update,
                 f"❌ Для получения материалов подпишитесь на канал {CHANNELS_BY_SUBJECT[subject]} и попробуйте снова."
