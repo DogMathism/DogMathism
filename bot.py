@@ -391,6 +391,14 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
 
     user_id = query.from_user.id
     subject = query.data.replace("check_sub_", "")
+    
+       # Имитация прогресса проверки
+    progress = await query.message.reply_text("Проверяю подписку… [░░░░░░░░░░] 0%")
+    total = 10
+    for step in range(1, total + 1):
+        await asyncio.sleep(0.2)  # скорость "анимации"
+        bar = "█" * step + "░" * (total - step)
+        await progress.edit_text(f"Проверяю подписку… [{bar}] {step*10}%")
 
     subscribed = await check_subscription(context, user_id, subject)
 
