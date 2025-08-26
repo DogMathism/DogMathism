@@ -369,13 +369,13 @@ async def finalize_and_materials(update: Update, context: ContextTypes.DEFAULT_T
     if subject and subject in CHANNELS_BY_SUBJECT:
         subscribed = await check_subscription(context, user_id, subject)
         if not subscribed:
+            keyboard = [
+                    [InlineKeyboardButton("✅ Проверить подписку", callback_data=f"check_sub_{subject}")]
+            ]
             await reply(
                 update,
                 f"❌ Для получения материалов подпишитесь на канал {CHANNELS_BY_SUBJECT[subject]} и попробуйте снова."
             )
-            keyboard = [
-                    [InlineKeyboardButton("✅ Проверить подписку", callback_data=f"check_sub_{subject}")]
-            ]
             # Покажем кнопку выбора роли, чтобы юзер мог пойти в другой сценарий
             await return_to_role_selection(update)
             return
