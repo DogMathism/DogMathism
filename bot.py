@@ -17,12 +17,12 @@ import pytz  # нужно установить: pip install pytz
 # ================== НАСТРОЙКИ ==================
 # --- Предметы ---
 SUBJECTS = {
-    "Математика": {"nominative": "Математика", "accusative": "математику"},
-    "Физика": {"nominative": "Физика", "accusative": "физику"},
-    "Химия": {"nominative": "Химия", "accusative": "химию"},
-    "Биология": {"nominative": "Биология", "accusative": "биологию"},
-    "Русский": {"nominative": "Русский язык", "accusative": "русский язык"},
-    "Биохимия": {"nominative": "Биохимия", "accusative": "биохимию"}
+    "Математика": {"nominative": "Математика", "accusative": "математике"},
+    "Физика": {"nominative": "Физика", "accusative": "физике"},
+    "Химия": {"nominative": "Химия", "accusative": "химии"},
+    "Биология": {"nominative": "Биология", "accusative": "биологии"},
+    "Русский": {"nominative": "Русский язык", "accusative": "русскому языку"},
+    "Биохимия": {"nominative": "Биохимия", "accusative": "биохимии"}
 }
 # Админ
 ADMIN_ID = 7972251746  # int
