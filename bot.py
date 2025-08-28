@@ -42,8 +42,8 @@ materials_files = {
     "Химия": [("Таблица Менделеева.pdf", "materials/chem_periodic_table.pdf")],
     "Биология": [("Клеточная биология.pdf", "materials/bio_cell_biology.pdf")],
     "Русский": [("Правила орфографии.pdf", "materials/rus_orthography_rules.pdf")],
-    "Биохимия": [("Аминокислоты.pdf", "materials/biochem_basics.pdf"),
-                 ("Полипептиды.pdf", "materials/math/Vectors.pdf")],
+    "Биохимия": [("Аминокислоты.pdf", "materials/biochem/Аминокислоты.pdf"),
+                 ("Полипептиды.pdf", "materials/biochem/Полипептиды.pdf")],
 }
 
 # Служебное состояние пользователей
