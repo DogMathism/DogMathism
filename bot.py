@@ -104,11 +104,11 @@ def subjects_keyboard(exclude=None, only=None):
 
 def class_keyboard():
     rows = [
-        [InlineKeyboardButton("5", callback_data="class|5"),
-         InlineKeyboardButton("6", callback_data="class|6")],
-        [InlineKeyboardButton("7", callback_data="class|7"),
-         InlineKeyboardButton("8", callback_data="class|8")],
-        [InlineKeyboardButton("10", callback_data="class|10")],
+        [InlineKeyboardButton("5 класс", callback_data="class|5"),
+         InlineKeyboardButton("6 класс", callback_data="class|6")],
+        [InlineKeyboardButton("7 класс", callback_data="class|7"),
+         InlineKeyboardButton("8 класс", callback_data="class|8")],
+        [InlineKeyboardButton("10 класс", callback_data="class|10")],
         [InlineKeyboardButton("Подготовка к ОГЭ", callback_data="class|OGE"),
          InlineKeyboardButton("Подготовка к ЕГЭ", callback_data="class|EGE")],
     ]
@@ -198,8 +198,8 @@ async def choose_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if role == "student":
         # Выбор действия
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Запись на занятия", callback_data="action|register")],
-            [InlineKeyboardButton("Получить полезные материалы", callback_data="action|materials")],
+            [InlineKeyboardButton("📝Запись на занятия", callback_data="action|register")],
+            [InlineKeyboardButton("📚Получить полезные материалы", callback_data="action|materials")],
         ])
         await q.message.reply_text("Выберите действие:", reply_markup=kb)
         return
@@ -314,7 +314,7 @@ async def ask_phone(update: Update):
     users_data[update.effective_user.id]["step"] = "phone"
     kb = ReplyKeyboardMarkup([[KeyboardButton("📱 Отправить контакт", request_contact=True)]],
                              resize_keyboard=True, one_time_keyboard=True)
-    await reply(update, "Отправьте ваш номер телефона:", reply_markup=kb)
+    await reply(update, "Отправьте Ваш контакт:", reply_markup=kb)
 
 @typing_action
 async def phone_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
