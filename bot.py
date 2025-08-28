@@ -15,7 +15,15 @@ import datetime
 import pytz  # нужно установить: pip install pytz
 
 # ================== НАСТРОЙКИ ==================
-
+# --- Предметы ---
+SUBJECTS = {
+    "Математика": {"nominative": "Математика", "accusative": "математику"},
+    "Физика": {"nominative": "Физика", "accusative": "физику"},
+    "Химия": {"nominative": "Химия", "accusative": "химию"},
+    "Биология": {"nominative": "Биология", "accusative": "биологию"},
+    "Русский": {"nominative": "Русский язык", "accusative": "русский язык"},
+    "Биохимия": {"nominative": "Биохимия", "accusative": "биохимию"}
+}
 # Админ
 ADMIN_ID = 7972251746  # int
 ADMIN_USERNAME = "@dogwarts_admin"
@@ -444,7 +452,7 @@ async def send_materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton(name, callback_data=f"material|{subject}|{i}")]
         for i, (name, _) in enumerate(files)
     ])
-    await reply(update, f"📚 Выберите материал по {subject}:", reply_markup=kb)
+    await reply(update, f"📚 Выберите материал по {SUBJECTS[subject]['accusative']}:", reply_markup=kb)
 
 @typing_action
 async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
