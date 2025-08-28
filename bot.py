@@ -155,7 +155,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
     await update.message.reply_text(
         "👋 Добро пожаловать в <b>DogWarts</b> - <b>школу</b>, где знания сильнее <b>магии</b>\n\n"
-        "Выберите вашу роль:",
+        "А пока подпишись на наши каналы, чтобы получить <b>бесплатные материалы:</b>\n\n"
+        "🧠 Математика - @DogMathic\n"
+        "🧪 Химия - @DogChemik\n"
+        "⚛️ Биохимия - @DogBioChemik\n"
+        "📖 Русский язык - @DogRussik\n"
+        "🌿 Биология - @DogBio\n"
+        "⚙️ Физика - @DogPhysic\n\n"
+        "💬 По любому вопросу всегда можешь обратиться к <b>нашему менеджеру</b> - @DogWarts_admin\n\n"
+        "<b>Начни свой путь к успеху</b> 👇\n\n",
         parse_mode="HTML",
         reply_markup=kb
     )
