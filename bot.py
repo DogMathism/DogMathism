@@ -323,11 +323,15 @@ async def phone_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     contact = update.message.contact
     if not contact:
-        await update.message.reply_text("Пожалуйста, отправьте контакт кнопкой ниже.")
+        await update.message.reply_text("Пожалуйста, отправьте контакт кнопкой ниже 👇")
         return
     users_data[user_id]["phone"] = contact.phone_number
     users_data[user_id]["step"] = None
-    await update.message.reply_text("Спасибо!", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text(
+    "Благодарим за оставленную заявку! Наш <a href='https://t.me/dogwarts_admin'>менеджер</a> скоро свяжется с Вами для уточнения деталей!",
+    parse_mode="HTML",
+    reply_markup=ReplyKeyboardRemove()
+    )
     await finalize_and_materials(update, context)
 
 # --- ФИНАЛ: СОХРАНЕНИЕ + ПОДПИСКА + МЕНЮ МАТЕРИАЛОВ ---
