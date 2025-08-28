@@ -17,12 +17,12 @@ import pytz  # нужно установить: pip install pytz
 # ================== НАСТРОЙКИ ==================
 # --- Предметы ---
 SUBJECTS = {
-    "Математика": {"nominative": "Математика", "accusative": "математике"},
-    "Физика": {"nominative": "Физика", "accusative": "физике"},
-    "Химия": {"nominative": "Химия", "accusative": "химии"},
-    "Биология": {"nominative": "Биология", "accusative": "биологии"},
-    "Русский": {"nominative": "Русский язык", "accusative": "русскому языку"},
-    "Биохимия": {"nominative": "Биохимия", "accusative": "биохимии"}
+    "Математика": {"nominative": "Математика", "dative": "математике"},
+    "Физика": {"nominative": "Физика", "dative": "физике"},
+    "Химия": {"nominative": "Химия", "dative": "химии"},
+    "Биология": {"nominative": "Биология", "dative": "биологии"},
+    "Русский": {"nominative": "Русский язык", "dative": "русскому языку"},
+    "Биохимия": {"nominative": "Биохимия", "dative": "биохимии"}
 }
 # Админ
 ADMIN_ID = 7972251746  # int
@@ -452,7 +452,7 @@ async def send_materials_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton(name, callback_data=f"material|{subject}|{i}")]
         for i, (name, _) in enumerate(files)
     ])
-    await reply(update, f"📚 Выберите материал по {SUBJECTS[subject]['accusative']}:", reply_markup=kb)
+    await reply(update, f"📚 Выберите материал по {SUBJECTS[subject]['dative']}:", reply_markup=kb)
 
 @typing_action
 async def send_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
