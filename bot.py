@@ -186,7 +186,7 @@ async def choose_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users_data[user_id] = {"step": None, "role": role, "user_id": user_id}
 
     if role == "teacher":
-        await q.message.reply_text(f"Если вы хотите работать у нас, свяжитесь с админом: {ADMIN_USERNAME}")
+        await q.message.reply_text(f"По любому вопросу Вы всегда можете обратиться к нашему менеджеру:{ADMIN_USERNAME}")
         await return_to_role_selection(update)
         return
 
