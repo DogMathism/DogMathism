@@ -224,7 +224,7 @@ async def student_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action == "register":
         await q.message.reply_text("Выберите предмет:", reply_markup=subjects_keyboard(exclude=["Биохимия"]))
     else:
-        await q.message.reply_text("Выберите предмет для материалов:", reply_markup=subjects_keyboard())
+        await q.message.reply_text("Выберите предмет для материалов:", reply_markup=subjects_keyboard(exclude=["Биохимия"]))
 
 # Выбор предмета
 @typing_action
